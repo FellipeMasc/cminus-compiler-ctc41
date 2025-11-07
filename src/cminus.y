@@ -93,11 +93,13 @@ type_spec : INT
                 {
                   $$ = newExpNode(TypeSpecK);
                   $$->type = copyString(tokenString);
+                  $$->lineno = lineno;
                 }
           | VOID
                 {
                   $$ = newExpNode(TypeSpecK);
                   $$->type = copyString(tokenString);
+                  $$->lineno = lineno;
                 }
         ;
 fun_decl : type_spec ID 
@@ -115,15 +117,6 @@ fun_decl : type_spec ID
         ;
 decl_compo : LBRACE local_decl list_stmt RBRACE
                 {
-                  //YYSTYPE t = $2;
-                  //if (t != NULL) {
-                   // while (t->sibling != NULL)
-                    //  t = t->sibling;
-                    //t->sibling = $3;
-                   // $$ = $2;
-                  //} else {
-                    //$$ = $3;
-                  //}
                   $$ = newStmtNode(CompoundK);
                   $$->child[0] = $2;
                   $$->child[1] = $3;
@@ -157,6 +150,7 @@ param : type_spec ID
                   $$->type = $1->type;
                   $$->attr.name = copyString(prevTokenString);
                   $$->isArray = 0;
+                  $$->lineno = lineno;
                 }
           | type_spec ID { savedName = copyString(prevTokenString); } LBRACKET RBRACKET
                 {
@@ -164,6 +158,7 @@ param : type_spec ID
                   $$->type = $1->type;
                   $$->attr.name = savedName;
                   $$->isArray = 1;
+                  $$->lineno = lineno;
                 }
         ;
 decl_block : LBRACE local_decl list_stmt RBRACE
@@ -171,6 +166,7 @@ decl_block : LBRACE local_decl list_stmt RBRACE
                   $$ = newStmtNode(CompoundK);
                   $$->child[0] = $2;
                   $$->child[1] = $3;
+                  $$->lineno = lineno;
                 }
         ;
 local_decl : local_decl var_decl 
@@ -228,6 +224,7 @@ decl_sel : IF LPAREN exp RPAREN stmt
                   $$ = newStmtNode(IfK);
                   $$->child[0] = $3;
                   $$->child[1] = $5;
+                  $$->lineno = lineno;
                 }
           | IF LPAREN exp RPAREN stmt ELSE stmt
                 {
@@ -235,6 +232,7 @@ decl_sel : IF LPAREN exp RPAREN stmt
                   $$->child[0] = $3;
                   $$->child[1] = $5;
                   $$->child[2] = $7;
+                  $$->lineno = lineno;
                 }
         ;
 decl_ite : WHILE LPAREN exp RPAREN stmt
@@ -242,16 +240,19 @@ decl_ite : WHILE LPAREN exp RPAREN stmt
                   $$ = newStmtNode(WhileK);
                   $$->child[0] = $3;
                   $$->child[1] = $5;
+                  $$->lineno = lineno;
                 }
         ;
 decl_return : RETURN SEMI 
                 {
                   $$ = newStmtNode(ReturnK);
+                  $$->lineno = lineno;
                 }
           | RETURN exp SEMI
                 {
                   $$ = newStmtNode(ReturnK);
                   $$->child[0] = $2;
+                  $$->lineno = lineno;
                 }
         ;
 exp : var EQ exp 
@@ -265,6 +266,7 @@ exp : var EQ exp
                   }
                   $$->isArray = $1->isArray;
                   $$->attr.name = $1->attr.name;
+                  $$->lineno = lineno;
                 }
           | simple_exp
                 {
@@ -276,6 +278,7 @@ var : ID
                   $$ = newExpNode(VarK);
                   $$->isArray = 0;
                   $$->attr.name = copyString(prevTokenString);
+                  $$->lineno = lineno;
                 }
       | ID { savedName = copyString(prevTokenString); } LBRACKET exp RBRACKET
       {
@@ -283,6 +286,7 @@ var : ID
         $$->attr.name = savedName;
         $$->isArray = 1;
         $$->child[0] = $4;
+        $$->lineno = lineno;
       }
       ;
 simple_exp : sum_exp rel sum_exp 
@@ -291,6 +295,7 @@ simple_exp : sum_exp rel sum_exp
                   $$->child[0] = $1;
                   $$->child[1] = $3;
                   $$->attr.op = savedRelOperator;
+                  $$->lineno = lineno;
                 }
           | sum_exp
                 {
@@ -310,6 +315,7 @@ sum_exp : sum_exp PLUS term
                   $$->child[0] = $1;
                   $$->child[1] = $3;
                   $$->attr.op = PLUS;
+                  $$->lineno = lineno;
                 }
           |
           sum_exp MINUS term 
@@ -318,6 +324,7 @@ sum_exp : sum_exp PLUS term
                   $$->child[0] = $1;
                   $$->child[1] = $3;
                   $$->attr.op = MINUS;
+                  $$->lineno = lineno;
                 }
           |
           MINUS term
@@ -326,6 +333,7 @@ sum_exp : sum_exp PLUS term
                   $$->child[0] = $2;
                   $$->attr.op = MINUS;
                   $$->type = "unary";
+                  $$->lineno = lineno;
                 }
           | term
                 {
@@ -339,6 +347,7 @@ term : term TIMES factor
                   $$->child[0] = $1;
                   $$->child[1] = $3;
                   $$->attr.op = TIMES;
+                  $$->lineno = lineno;
                 }
                   |
 term OVER factor 
@@ -347,6 +356,7 @@ term OVER factor
                   $$->child[0] = $1;
                   $$->child[1] = $3;
                   $$->attr.op = OVER;
+                  $$->lineno = lineno;
                 }
           | factor
                 {
@@ -369,6 +379,7 @@ factor  : LPAREN exp RPAREN
                 {
                   $$ = newExpNode(ConstK);
                   $$->attr.val = atoi(tokenString);
+                  $$->lineno = lineno;
                 }
         ;
 ativ : ID 
@@ -378,6 +389,7 @@ ativ : ID
                   $$ = newExpNode(CallK);
                   $$->attr.name = popName();
                   $$->child[0] = $4; 
+                  $$->lineno = lineno;
                 }
         ;
 
