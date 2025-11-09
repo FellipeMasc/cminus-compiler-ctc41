@@ -156,7 +156,7 @@ TreeNode *newDeclNode(DeclKind kind) {
       t->child[i] = NULL;
     t->sibling = NULL;
     t->nodekind = DeclK;
-    t->kind.exp = kind;
+    t->kind.decl = kind;
     t->lineno = lineno;
   }
   return t;
@@ -216,9 +216,6 @@ void printTree(TreeNode *tree) {
         break;
       case ReturnK:
         pc("Return\n");
-        break;
-      case ExpStmtK:
-        pc("ExpStmt\n");
         break;
       default:
         pce("Unknown StmtNode kind\n");

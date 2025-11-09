@@ -29,6 +29,7 @@ static char *popName() {
   return nameStack[nameStackTop--];
 }
 
+
 %}
 
 

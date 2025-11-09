@@ -26,47 +26,7 @@
 /* MAXRESERVED = the number of reserved words */
 #define MAXRESERVED 8
 typedef int TokenType;
-// typedef enum
-// /* book-keeping tokens */
-// { ENDFILE,
-//   ERROR,
-//   /* reserved words */
-//   IF,
-//   THEN,
-//   ELSE,
-//   END,
-//   REPEAT,
-//   UNTIL,
-//   READ,
-//   WRITE,
-//   VOID,
-//   INT,
-//   WHILE,
-//   RETURN,
-//   /* multicharacter tokens */
-//   ID,
-//   NUM,
-//   /* special symbols */
-//   ASSIGN,
-//   EQ,
-//   EQQ,
-//   NEQ,
-//   LT,
-//   GT,
-//   LTE,
-//   GTE,
-//   PLUS,
-//   MINUS,
-//   TIMES,
-//   OVER,
-//   LPAREN,
-//   RPAREN,
-//   LBRACKET,
-//   RBRACKET,
-//   LBRACE,
-//   RBRACE,
-//   COMMA,
-//   SEMI } TokenType;
+
 
 extern FILE *source;           /* source code text file */
 extern FILE *redundant_source; /* source code text file */
@@ -79,9 +39,6 @@ extern int lineno; /* source line number for listing */
 /***********   Syntax tree for parsing ************/
 /**************************************************/
 
-// typedef enum { StmtK, ExpK } NodeKind;
-// typedef enum { IfK, RepeatK, AssignK, ReadK, WriteK } StmtKind;
-// typedef enum { OpK, ConstK, IdK } ExpKind;
 
 // /* ExpType is used for type checking */
 typedef enum { Void, Integer, Boolean } ExpType;
@@ -100,7 +57,6 @@ typedef enum {
   WhileK,    // decl_ite (while statement)
   CompoundK, // decl_compo (compound statement)
   ReturnK,   // decl_return
-  ExpStmtK   // exp_decl (expression statement)
 } StmtKind;
 
 typedef enum {
@@ -112,6 +68,15 @@ typedef enum {
   VarK,     // var (variable with possible array access)
   TypeSpecK // For storing INT or VOID
 } ExpKind;
+
+typedef struct scopeListRec {
+  char *name;
+  char *type;
+  int depth;
+  struct scopeListRec *init;
+  struct scopeListRec *end;
+  struct scopeListRec *next;
+} *scopeList;
 
 #define MAXCHILDREN 3
 
@@ -133,6 +98,7 @@ typedef struct treeNode {
   char *type; /* for type checking of exps */
   char *typeReturn;
   int isArray;
+  scopeList nodeScopeList;
 } TreeNode;
 
 /**************************************************/

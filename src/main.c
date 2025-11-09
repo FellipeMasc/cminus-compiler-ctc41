@@ -10,7 +10,7 @@
 /* set NO_PARSE to TRUE to get a scanner-only compiler */
 #define NO_PARSE FALSE
 /* set NO_ANALYZE to TRUE to get a parser-only compiler */
-#define NO_ANALYZE TRUE
+#define NO_ANALYZE FALSE
 
 /* set NO_CODE to TRUE to get a compiler that does not
  * generate code
@@ -41,7 +41,7 @@ FILE *redundant_source;
 int EchoSource = TRUE;
 int TraceScan = TRUE;
 int TraceParse = TRUE;
-int TraceAnalyze = FALSE;
+int TraceAnalyze = TRUE;
 int TraceCode = FALSE;
 
 int Error = FALSE;
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
   //// end opening sources ////
 
   listing = stdout; /* send messages from main() to screen */
-  initializePrinter(detailpath, pgm, UP2SYN); // init logger in /lib/log.c
+  initializePrinter(detailpath, pgm, UP2TAB); // init logger in /lib/log.c
   // for the lexical analysis, you might change LOGALL to LER, to generate only
   // lex and err outputs.
 
@@ -95,6 +95,7 @@ int main(int argc, char *argv[]) {
     printTree(syntaxTree);
   }
 #if !NO_ANALYZE
+  doneSYNstartTAB();
   if (!Error) {
     if (TraceAnalyze)
       fprintf(listing, "\nBuilding Symbol Table...\n");
