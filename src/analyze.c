@@ -9,7 +9,6 @@
 #include "analyze.h"
 #include "globals.h"
 #include "symtab.h"
-#include "util.c"
 
 #define MAX_SCOPE_STACK 100
 
@@ -22,68 +21,142 @@
 /* counter for variable memory locations */
 static int location = 0;
 
-static struct scopeListRec getInitialScopeList() {
-  struct scopeListRec initialScopeList;
-  initialScopeList.type = "global";
-  initialScopeList.depth = 0;
-  initialScopeList.name = "";
-  initialScopeList.next = NULL;
-  return initialScopeList;
+static scopeList deepCopyScopeList(scopeList source) {
+  if (source == NULL) {
+    return NULL;
+  }
+
+  // Allocate new scope node
+  scopeList copy = (scopeList)malloc(sizeof(struct scopeListRec));
+
+  // Deep copy strings (avoid sharing pointers)
+  copy->name = (source->name != NULL) ? strdup(source->name) : NULL;
+  copy->type = (source->type != NULL) ? strdup(source->type) : NULL;
+
+  // Copy scalar value
+  copy->depth = source->depth;
+
+  // Recursively deep copy the linked list
+  copy->next = deepCopyScopeList(source->next);
+
+  // Handle 'end' pointer - need to find the equivalent node in the new list
+  if (source->end == NULL) {
+    copy->end = NULL;
+  } else if (source->end == source) {
+    // If end points to itself
+    copy->end = copy;
+  } else {
+    // Find which node 'end' points to and set copy->end to the equivalent
+    // For simplicity, traverse to find the same depth/name
+    scopeList temp = copy;
+    scopeList sourceTemp = source;
+    while (sourceTemp != NULL && sourceTemp != source->end) {
+      sourceTemp = sourceTemp->next;
+      if (temp != NULL)
+        temp = temp->next;
+    }
+    copy->end = temp;
+  }
+
+  return copy;
 }
 
-static void addScopeToChild(TreeNode *parent, TreeNode *child) {
-  if ((parent->nodekind == StmtK && parent->kind.stmt != ReturnK) ||
-      (parent->nodekind == DeclK && parent->kind.decl == FunDeclK)) {
-    scopeList newScope = (scopeList)malloc(sizeof(struct scopeListRec));
-    scopeList childScope = (scopeList)malloc(sizeof(struct scopeListRec));
-    newScope->next = NULL;
-    parent->nodeScopeList->end->next = newScope;
-    childScope->end->depth = parent->nodeScopeList->end->depth + 1;
-    *childScope = *parent->nodeScopeList;
-    childScope->end = newScope;
-    child->nodeScopeList = childScope;
-    switch (parent->nodekind) {
-    case StmtK:
-      switch (parent->kind.stmt) {
-      case IfK:
-        childScope->end->name = "if";
-        childScope->end->type = "if";
-        break;
-      case WhileK:
-        childScope->end->name = "while";
-        childScope->end->type = "while";
-        break;
-      case CompoundK:
-        if (parent->nodekind == StmtK && parent->kind.stmt == CompoundK) {
-          childScope->type = "block";
-          childScope->name = "block";
-        } else {
-          childScope->name = parent->nodeScopeList->name;
-          childScope->type = parent->nodeScopeList->type;
-          childScope->end->depth = parent->nodeScopeList->end->depth - 1;
+static scopeList getInitialScopeList() {
+  scopeList initialScope = (scopeList)malloc(sizeof(struct scopeListRec));
+  initialScope->type = "global";
+  initialScope->depth = 0;
+  initialScope->name = "";
+  initialScope->next = NULL;
+  initialScope->end = initialScope;
+  return initialScope;
+}
+
+static scopeList buildScopeList(char *name, char *type, int depth) {
+  scopeList newScope = (scopeList)malloc(sizeof(struct scopeListRec));
+  newScope->name = (name != NULL) ? name : "";
+  newScope->type = (type != NULL) ? type : "";
+  newScope->depth = depth;
+  newScope->next = NULL;
+  newScope->end = NULL;
+  return newScope;
+}
+
+static scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t) {
+  int initialDepth = initialScopeList->end->depth;
+  char *initialName = initialScopeList->end->name;
+  scopeList currentScope = buildScopeList(t->attr.name, t->type, initialDepth);
+
+  scopeList copyOfInitialScopeList = deepCopyScopeList(initialScopeList);
+  switch (t->nodekind) {
+  case StmtK:
+    switch (t->kind.stmt) {
+    case IfK:
+      copyOfInitialScopeList->end = currentScope;
+      scopeList temp = copyOfInitialScopeList;
+      while (temp->next != NULL) {
+        temp = temp->next;
+      }
+      temp->next = currentScope;
+      currentScope->name = initialName;
+      // currentScope->depth = initialDepth + 1;
+      return copyOfInitialScopeList;
+    case WhileK:
+      copyOfInitialScopeList->end = currentScope;
+      scopeList tempWhile = copyOfInitialScopeList;
+      while (tempWhile->next != NULL) {
+        tempWhile = tempWhile->next;
+      }
+      tempWhile->next = currentScope;
+      currentScope->name = initialName;
+      // currentScope->depth = initialDepth + 1;
+      return copyOfInitialScopeList;
+    case CompoundK:
+      if (initialScopeList->end->type != NULL &&
+          strcmp(initialScopeList->end->type, "block") == 0) {
+        scopeList temp = copyOfInitialScopeList;
+        while (temp->next != NULL) {
+          temp = temp->next;
         }
-        break;
-      default:
-        break;
+        temp->next = currentScope;
+        copyOfInitialScopeList->end = currentScope;
+        copyOfInitialScopeList->end->name = "block";
+        currentScope->depth = initialDepth + 1;
+        return copyOfInitialScopeList;
+      } else {
+        copyOfInitialScopeList->end = currentScope;
+        scopeList temp = copyOfInitialScopeList;
+        while (temp->next != NULL) {
+          temp = temp->next;
+        }
+        temp->next = currentScope;
+        currentScope->name = initialName;
+        currentScope->depth = initialDepth;
+        return copyOfInitialScopeList;
       }
-      break;
-    case DeclK:
-      if (parent->kind.decl == FunDeclK) {
-      }
-      break;
-    case ExpK:
+    default:
       break;
     }
-  } else {
-
-    scopeList childScope = (scopeList)malloc(sizeof(struct scopeListRec));
-
-    *childScope = *parent->nodeScopeList;
-
-    childScope->depth += 1;
-
-    child->nodeScopeList = childScope;
+  case DeclK:
+    switch (t->kind.decl) {
+    case FunDeclK:
+      copyOfInitialScopeList->end = currentScope;
+      scopeList temp = copyOfInitialScopeList;
+      while (temp->next != NULL) {
+        temp = temp->next;
+      }
+      temp->next = currentScope;
+      currentScope->depth = initialDepth + 1;
+      return copyOfInitialScopeList;
+    default:
+      break;
+    }
+    break;
+  default:
+    free(currentScope);
+    return NULL;
+    break;
   }
+  return NULL;
 }
 
 /* Procedure traverse is a generic recursive
@@ -91,19 +164,24 @@ static void addScopeToChild(TreeNode *parent, TreeNode *child) {
  * it applies preProc in preorder and postProc
  * in postorder to tree pointed to by t
  */
-static void traverse(TreeNode *t, void (*preProc)(TreeNode *),
-                     void (*postProc)(TreeNode *),
-                     struct scopeListRec currentScopeList) {
+static void traverse(TreeNode *t, void (*preProc)(TreeNode *, scopeList),
+                     void (*postProc)(TreeNode *, scopeList),
+                     scopeList initialScopeList) {
   if (t != NULL) {
-    preProc(t);
+
+    preProc(t, initialScopeList);
+    scopeList currentScopeList = getCurrentScopeList(initialScopeList, t);
+    if (currentScopeList == NULL) {
+      currentScopeList = initialScopeList;
+    }
     {
       int i;
-      for (i = 0; i < MAXCHILDREN; i++)
-
-        traverse(t->child[i], preProc, postProc);
+      for (i = 0; i < MAXCHILDREN; i++) {
+        traverse(t->child[i], preProc, postProc, currentScopeList);
+      }
     }
-    postProc(t);
-    traverse(t->sibling, preProc, postProc);
+    postProc(t, currentScopeList);
+    traverse(t->sibling, preProc, postProc, initialScopeList);
   }
 }
 
@@ -111,18 +189,62 @@ static void traverse(TreeNode *t, void (*preProc)(TreeNode *),
  * generate preorder-only or postorder-only
  * traversals from traverse
  */
-static void nullProc(TreeNode *t) {
+static void nullProc(TreeNode *t, scopeList currentScopeList) {
   if (t == NULL)
     return;
   else
     return;
 }
 
+static char *checkAllPossibleScopes(TreeNode *t, scopeList currentScopeList) {
+  scopeList temp = currentScopeList;
+  while (temp != NULL) {
+    if (st_lookup(t->attr.name, temp->name) != -1) {
+      return temp->name;
+    }
+    temp = temp->next;
+  }
+  return NULL;
+}
+
+static char *returnMostSpecificScopeName(scopeList currentScopeList,
+                                         TreeNode *t, char *lastScopeName) {
+  scopeList temp = currentScopeList;
+  char *mostSpecificScopeName = lastScopeName;
+  while (temp != NULL) {
+    if (st_lookup(t->attr.name, temp->name) != -1) {
+      mostSpecificScopeName = temp->name;
+    }
+    temp = temp->next;
+  }
+  return mostSpecificScopeName;
+}
+
+static char *constructScopeName(scopeList currentScopeList) {
+  // Allocate sufficient buffer (adjust size as needed)
+  char *scopeName = (char *)malloc(256 * sizeof(char));
+  scopeName[0] = '\0'; // Initialize as empty string
+  int currentDepth = currentScopeList->depth;
+  scopeList temp = currentScopeList;
+  while (temp != NULL) {
+    if (temp->depth == currentDepth) {
+      if (currentDepth >= 2) {
+        strcat(scopeName, "-");
+      }
+      strcat(scopeName, temp->name);
+      currentDepth += 1;
+    }
+    temp = temp->next;
+  }
+  return scopeName;
+}
+
 /* Procedure insertNode inserts
  * identifiers stored in t into
  * the symbol table
  */
-static void insertNode(TreeNode *t) {
+static void insertNode(TreeNode *t, scopeList currentScopeList) {
+  char *scopeName = constructScopeName(currentScopeList);
   switch (t->nodekind) {
   case StmtK:
     switch (t->kind.stmt) {
@@ -146,8 +268,229 @@ static void insertNode(TreeNode *t) {
       break;
     case IdK:
       break;
-    case AssignK:
+    case AssignK: {
+      char *possibleScopeName = checkAllPossibleScopes(t, currentScopeList);
+      char *mostSpecificScopeName =
+          returnMostSpecificScopeName(currentScopeList, t, scopeName);
+
+      if (possibleScopeName == NULL) {
+        char *message = (char *)malloc(256 * sizeof(char));
+        sprintf(message, "'%s' was not declared in this scope", t->attr.name);
+        semanticError(t, message);
+        free(message);
+      } else {
+        st_insert(t->attr.name, t->lineno, t->isArray ? "array" : "var",
+                  t->type, mostSpecificScopeName);
+      }
       break;
+    }
+    case CallK: {
+      char *possibleScopeName = checkAllPossibleScopes(t, currentScopeList);
+      char *mostSpecificScopeName =
+          returnMostSpecificScopeName(currentScopeList, t, scopeName);
+
+      if (possibleScopeName == NULL) {
+        char *message = (char *)malloc(256 * sizeof(char));
+        sprintf(message, "'%s' was not declared in this scope", t->attr.name);
+        semanticError(t, message);
+        free(message);
+      } else {
+        st_just_add_lines(t->attr.name, t->lineno, mostSpecificScopeName);
+        // if (t->child[0] != NULL) {
+        //   if (t->child[0]->kind.exp == ConstK) {
+        //     st_just_add_lines(t->child[0]->attr.name, t->lineno,
+        //                       mostSpecificScopeName);
+        //   }
+        //   if (t->child[0]->kind.exp == VarK) {
+        //     st_just_add_lines(t->child[0]->attr.name, t->lineno,
+        //                       mostSpecificScopeName);
+        //   }
+        // }
+      }
+      break;
+    }
+    case VarK: {
+      char *mostSpecificScopeName =
+          returnMostSpecificScopeName(currentScopeList, t, scopeName);
+      if (isThereVariableAtSameLine(t->attr.name, t->lineno,
+                                    mostSpecificScopeName)) {
+        // char *message = (char *)malloc(256 * sizeof(char));
+        // sprintf(message, "'%s' was already declared at line %d",
+        // t->attr.name,
+        //         t->lineno);
+        // semanticError(t, message);
+        // free(message);
+      } else {
+        st_insert(t->attr.name, t->lineno, t->isArray ? "array" : "var",
+                  t->type, mostSpecificScopeName);
+      }
+      break;
+    }
+    case TypeSpecK:
+      break;
+    default:
+      break;
+    }
+    break;
+  case DeclK:
+    switch (t->kind.decl) {
+    case VarDeclK: {
+      if (strcmp(t->type, "void") == 0) {
+        semanticError(t, "variable declared void");
+
+      } else if (isThereFunction(t->attr.name)) {
+        char *message = (char *)malloc(256 * sizeof(char));
+        sprintf(message, "'%s' was already declared as a function",
+                t->attr.name);
+        semanticError(t, message);
+        free(message);
+      } else {
+        char *idType = t->isArray ? "array" : "var";
+        if (st_lookup(t->attr.name, scopeName) == -1)
+          st_insert(t->attr.name, t->lineno, idType, t->type, scopeName);
+        else {
+          char *message = (char *)malloc(256 * sizeof(char));
+          sprintf(message, "'%s' was already declared as a variable",
+                  t->attr.name);
+          semanticError(t, message);
+          free(message);
+        }
+      }
+      break;
+    }
+    case FunDeclK: {
+      if (st_lookup(t->attr.name, scopeName) == -1)
+        st_insert(t->attr.name, t->lineno, "fun", t->typeReturn, scopeName);
+      else
+        st_insert(t->attr.name, t->lineno, "fun", t->type, scopeName);
+      break;
+    }
+    case ParamK: {
+      if (st_lookup(t->attr.name, scopeName) == -1)
+        st_insert(t->attr.name, t->lineno,
+                  t->isArray ? "param-array" : "param-var", t->type, scopeName);
+      else
+        st_insert(t->attr.name, t->lineno,
+                  t->isArray ? "param-array" : "param-var", t->type, scopeName);
+      break;
+    }
+    case TypeK:
+      break;
+    }
+    break;
+  default:
+    break;
+  }
+}
+
+/* Function buildSymtab constructs the symbol
+ * table by preorder traversal of the syntax tree
+ */
+void buildSymtab(TreeNode *syntaxTree) {
+  st_insert("input", 0, "fun", "int", "");
+  st_insert("output", 0, "fun", "void", "");
+  scopeList initialScopeList = getInitialScopeList();
+  traverse(syntaxTree, insertNode, nullProc, initialScopeList);
+  if (TraceAnalyze) {
+    pc("\nSymbol table:\n\n");
+    printSymTab();
+  }
+}
+
+static void typeError(TreeNode *t, char *message) {
+  pce("Type error at line %d: %s\n", t->lineno, message);
+  Error = TRUE;
+}
+
+void semanticError(TreeNode *t, char *message) {
+  pce("Semantic error at line %d: %s\n", t->lineno, message);
+  Error = TRUE;
+}
+
+void mainError() {
+  if (st_lookup("main", "") == -1) {
+    char *message = (char *)malloc(256 * sizeof(char));
+    sprintf(message, "undefined reference to 'main'");
+    pce("Semantic error: %s\n", message);
+    free(message);
+  }
+}
+
+/* Procedure checkNode performs
+ * type checking at a single tree node
+ */
+static void checkNode(TreeNode *t, scopeList currentScopeList) {
+  char *scopeName = constructScopeName(currentScopeList);
+  switch (t->nodekind) {
+  case StmtK:
+    switch (t->kind.stmt) {
+    case IfK:
+      break;
+    case WhileK:
+      break;
+    case CompoundK:
+      break;
+    case ReturnK:
+      if (t->type != NULL) {
+        if (strcmp(t->type, "void") == 0) {
+          char *dataType = getDataType(currentScopeList->end->name);
+          char *returnType = malloc(256 * sizeof(char));
+          if (t->child[0] != NULL) {
+            if (t->child[0]->kind.exp == ConstK) {
+              returnType = "int";
+            }
+            if (t->child[0]->kind.exp == VarK) {
+              returnType = getDataType(t->child[0]->attr.name);
+            }
+            if (t->child[0]->kind.exp == CallK) {
+              returnType = getDataType(t->child[0]->attr.name);
+            }
+            if (t->child[0]->kind.exp == OpK) {
+              returnType = "int";
+            }
+          } else {
+            returnType = "void";
+          }
+          if (strcmp(dataType, returnType) != 0) {
+            semanticError(t, "Must return same type as function declaration");
+          }
+        }
+      }
+      break;
+    default:
+      break;
+    }
+    break;
+  case ExpK:
+    switch (t->kind.exp) {
+    case OpK:
+      break;
+    case ConstK:
+      break;
+    case IdK:
+      break;
+    case AssignK: {
+      char *possibleScopeName = checkAllPossibleScopes(t, currentScopeList);
+      if (possibleScopeName == NULL) {
+        break;
+      } else {
+        if (t->isArray) {
+          if (t->child[1]->kind.exp != ConstK && t->child[1]->kind.exp != OpK &&
+              getDataType(t->child[1]->attr.name) != NULL &&
+              strcmp(getDataType(t->child[1]->attr.name), "void") == 0) {
+            semanticError(t, "invalid use of void expression");
+          }
+        } else {
+
+          if (t->child[0]->kind.exp != ConstK && t->child[0]->kind.exp != OpK &&
+              getDataType(t->child[0]->attr.name) != NULL &&
+              strcmp(getDataType(t->child[0]->attr.name), "void") == 0) {
+            semanticError(t, "invalid use of void expression");
+          }
+        }
+      }
+      break;
+    }
     case CallK:
       break;
     case VarK:
@@ -161,33 +504,15 @@ static void insertNode(TreeNode *t) {
   case DeclK:
     switch (t->kind.decl) {
     case VarDeclK: {
-      if (st_lookup(t->attr.name) == -1)
-        st_insert(t->attr.name, t->lineno, location++);
-      else
-        st_insert(t->attr.name, t->lineno, 0);
-      break;
     }
     case FunDeclK: {
-      if (st_lookup(t->attr.name) == -1)
-        st_insert(t->attr.name, t->lineno, location++);
-      else
-        st_insert(t->attr.name, t->lineno, 0);
-      break;
     }
     case ParamK: {
-      if (st_lookup(t->attr.name) == -1)
-        st_insert(t->attr.name, t->lineno, location++);
-      else
-        st_insert(t->attr.name, t->lineno, 0);
+
       break;
     }
-    case TypeK: {
-      if (st_lookup(t->attr.name) == -1)
-        st_insert(t->attr.name, t->lineno, location++);
-      else
-        st_insert(t->attr.name, t->lineno, 0);
+    case TypeK:
       break;
-    }
     }
     break;
   default:
@@ -195,77 +520,10 @@ static void insertNode(TreeNode *t) {
   }
 }
 
-/* Function buildSymtab constructs the symbol
- * table by preorder traversal of the syntax tree
- */
-void buildSymtab(TreeNode *syntaxTree) {
-  struct scopeListRec initialScopeList = getInitialScopeList();
-  traverse(syntaxTree, insertNode, nullProc, initialScopeList);
-  if (TraceAnalyze) {
-    pc("\nSymbol table:\n\n");
-    printSymTab();
-  }
-}
-
-static void typeError(TreeNode *t, char *message) {
-  pce("Type error at line %d: %s\n", t->lineno, message);
-  Error = TRUE;
-}
-
-/* Procedure checkNode performs
- * type checking at a single tree node
- */
-static void checkNode(TreeNode *t) {
-  // switch (t->nodekind) {
-  // case ExpK:
-  //   switch (t->kind.exp) {
-  //   case OpK:
-  //     if ((t->child[0]->type != Integer) || (t->child[1]->type != Integer))
-  //       typeError(t, "Op applied to non-integer");
-  //     if ((t->attr.op == EQ) || (t->attr.op == LT))
-  //       t->type = Boolean;
-  //     else
-  //       t->type = Integer;
-  //     break;
-  //   case ConstK:
-  //   case IdK:
-  //     t->type = Integer;
-  //     break;
-  //   default:
-  //     break;
-  //   }
-  //   break;
-  // case StmtK:
-  //   switch (t->kind.stmt) {
-  //   case IfK:
-  //     if (t->child[0]->type == Integer)
-  //       typeError(t->child[0], "if test is not Boolean");
-  //     break;
-  //   case AssignK:
-  //     if (t->child[0]->type != Integer)
-  //       typeError(t->child[0], "assignment of non-integer value");
-  //     break;
-  //   case WriteK:
-  //     if (t->child[0]->type != Integer)
-  //       typeError(t->child[0], "write of non-integer value");
-  //     break;
-  //   case RepeatK:
-  //     if (t->child[1]->type == Integer)
-  //       typeError(t->child[1], "repeat test is not Boolean");
-  //     break;
-  //   default:
-  //     break;
-  //   }
-  //   break;
-  // default:
-  //   break;
-  // }
-}
-
 /* Procedure typeCheck performs type checking
  * by a postorder syntax tree traversal
  */
 void typeCheck(TreeNode *syntaxTree) {
-  struct scopeListRec initialScopeList = getInitialScopeList();
+  scopeList initialScopeList = getInitialScopeList();
   traverse(syntaxTree, nullProc, checkNode, initialScopeList);
 }

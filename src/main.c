@@ -102,9 +102,10 @@ int main(int argc, char *argv[]) {
     buildSymtab(syntaxTree);
     if (TraceAnalyze)
       fprintf(listing, "\nChecking Types...\n");
+    mainError();
     typeCheck(syntaxTree);
-    if (TraceAnalyze)
-      fprintf(listing, "\nType Checking Finished\n");
+    // if (TraceAnalyze)
+    //   fprintf(listing, "\nType Checking Finished\n");
   }
 #if !NO_CODE
   if (!Error) {

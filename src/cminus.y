@@ -112,6 +112,7 @@ fun_decl : type_spec ID
                   $$->attr.name = savedFunctionName;
                   $$->lineno = savedLineNo ;
                   $$->typeReturn = $1->type;
+                  $$->type = $1->type;
                   $$->child[0] = $5; 
                   $$->child[1] = $7;
                 }
@@ -119,8 +120,10 @@ fun_decl : type_spec ID
 decl_compo : LBRACE local_decl list_stmt RBRACE
                 {
                   $$ = newStmtNode(CompoundK);
+                  $$->type = "block";
                   $$->child[0] = $2;
                   $$->child[1] = $3;
+                  $$->lineno = lineno;
                 }
         ;
 params
@@ -159,14 +162,6 @@ param : type_spec ID
                   $$->type = $1->type;
                   $$->attr.name = savedName;
                   $$->isArray = 1;
-                  $$->lineno = lineno;
-                }
-        ;
-decl_block : LBRACE local_decl list_stmt RBRACE
-                {
-                  $$ = newStmtNode(CompoundK);
-                  $$->child[0] = $2;
-                  $$->child[1] = $3;
                   $$->lineno = lineno;
                 }
         ;
@@ -225,6 +220,7 @@ decl_sel : IF LPAREN exp RPAREN stmt
                   $$ = newStmtNode(IfK);
                   $$->child[0] = $3;
                   $$->child[1] = $5;
+                  $$->type = "if";
                   $$->lineno = lineno;
                 }
           | IF LPAREN exp RPAREN stmt ELSE stmt
@@ -233,6 +229,7 @@ decl_sel : IF LPAREN exp RPAREN stmt
                   $$->child[0] = $3;
                   $$->child[1] = $5;
                   $$->child[2] = $7;
+                  $$->type = "if";
                   $$->lineno = lineno;
                 }
         ;
@@ -241,6 +238,7 @@ decl_ite : WHILE LPAREN exp RPAREN stmt
                   $$ = newStmtNode(WhileK);
                   $$->child[0] = $3;
                   $$->child[1] = $5;
+                  $$->type = "while";
                   $$->lineno = lineno;
                 }
         ;
@@ -248,12 +246,14 @@ decl_return : RETURN SEMI
                 {
                   $$ = newStmtNode(ReturnK);
                   $$->lineno = lineno;
+                  $$->type = "void";
                 }
           | RETURN exp SEMI
                 {
                   $$ = newStmtNode(ReturnK);
                   $$->child[0] = $2;
                   $$->lineno = lineno;
+                  $$->type = $2->type;
                 }
         ;
 exp : var EQ exp 
@@ -381,6 +381,7 @@ factor  : LPAREN exp RPAREN
                   $$ = newExpNode(ConstK);
                   $$->attr.val = atoi(tokenString);
                   $$->lineno = lineno;
+                  $$->type = "int";
                 }
         ;
 ativ : ID 

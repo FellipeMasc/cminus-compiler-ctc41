@@ -59,7 +59,7 @@ else()
     target_link_libraries(mycmcomp ${FLEX_LIBRARIES})
 endif()
 
- #${FLEX_LIBRARIES})
+ #${FLEX_LIBRARIES}
  # compilation problem of undefined yylex - noyywrap - it only works with one src file
  # https://stackoverflow.com/questions/1480138/undefined-reference-to-yylex
 
@@ -103,32 +103,8 @@ add_custom_target(syndiff
   USES_TERMINAL
 )
 
-########## compiling the tiny compiler  #############3
+########## compiling the tiny compiler  #############
 
-if (DOPARSE)
-FLEX_TARGET(tinyscanner TinyGeracaoCodigo/tiny.l  ${CMAKE_CURRENT_BINARY_DIR}/tinylexer.c )
-BISON_TARGET(tinyparser TinyGeracaoCodigo/tiny.y ${CMAKE_CURRENT_BINARY_DIR}/tinyparser.c)
-ADD_FLEX_BISON_DEPENDENCY(tinyscanner tinyparser)
-FILE(GLOB tinycode TinyGeracaoCodigo/*.c  )
-add_executable(tiny
-        ${tinycode}
-        ${lablib}
-        ${BISON_tinyparser_OUTPUTS}
-        ${FLEX_tinyscanner_OUTPUTS}
-    )
-target_include_directories(tiny PUBLIC TinyGeracaoCodigo )
-target_link_libraries(tiny)
-else()
-FLEX_TARGET(tinyscanner TinyFlex/tiny.l  ${CMAKE_CURRENT_BINARY_DIR}/tinylexer.c )
-FILE(GLOB tinycode TinyFlex/*.c  )
-add_executable(tiny
-        ${tinycode}
-        ${lablib}
-        ${FLEX_tinyscanner_OUTPUTS}
-    )
-target_include_directories(tiny PUBLIC TinyFlex )
-target_link_libraries(tiny ${FLEX_LIBRARIES})
-endif()
 
 
 

@@ -9,7 +9,6 @@
 /****************************************************/
 
 #include "symtab.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -58,15 +57,31 @@ typedef struct BucketListRec {
 /* the hash table */
 static BucketList hashTable[SIZE];
 
+void st_just_add_lines(char *name, int lineno, char *scope) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) &&
+         !((strcmp(name, l->name) == 0) && (strcmp(scope, l->scope) == 0)))
+    l = l->next;
+  LineList t = l->lines;
+  while (t->next != NULL)
+    t = t->next;
+  t->next = (LineList)malloc(sizeof(struct LineListRec));
+  t->next->lineno = lineno;
+  t->next->next = NULL;
+}
+
 /* Procedure st_insert inserts line numbers and
  * memory locations into the symbol table
  * loc = memory location is inserted only the
  * first time, otherwise ignored
  */
-void st_insert(char *name, int lineno, int loc) {
+void st_insert(char *name, int lineno, char *type, char *dataType,
+               char *scope) {
   int h = hash(name);
   BucketList l = hashTable[h];
-  while ((l != NULL) && (strcmp(name, l->name) != 0))
+  while ((l != NULL) &&
+         !((strcmp(name, l->name) == 0) && (strcmp(scope, l->scope) == 0)))
     l = l->next;
   if (l == NULL) /* variable not yet in table */
   {
@@ -74,7 +89,9 @@ void st_insert(char *name, int lineno, int loc) {
     l->name = name;
     l->lines = (LineList)malloc(sizeof(struct LineListRec));
     l->lines->lineno = lineno;
-    l->memloc = loc;
+    l->type = type;
+    l->dataType = dataType;
+    l->scope = scope;
     l->lines->next = NULL;
     l->next = hashTable[h];
     hashTable[h] = l;
@@ -92,10 +109,11 @@ void st_insert(char *name, int lineno, int loc) {
 /* Function st_lookup returns the memory
  * location of a variable or -1 if not found
  */
-int st_lookup(char *name) {
+int st_lookup(char *name, char *scope) {
   int h = hash(name);
   BucketList l = hashTable[h];
-  while ((l != NULL) && (strcmp(name, l->name) != 0))
+  while ((l != NULL) &&
+         !((strcmp(name, l->name) == 0) && (strcmp(scope, l->scope) == 0)))
     l = l->next;
   if (l == NULL)
     return -1;
@@ -108,17 +126,22 @@ int st_lookup(char *name) {
  */
 void printSymTab() {
   int i;
-  pc("Variable Name  Location   Line Numbers\n");
-  pc("-------------  --------   ------------\n");
+  pc("Variable Name  Scope          ID Type  Data Type  Line Numbers\n");
+  pc("-------------  --------       -------  ---------  "
+     "-------------------------\n");
   for (i = 0; i < SIZE; ++i) {
     if (hashTable[i] != NULL) {
       BucketList l = hashTable[i];
       while (l != NULL) {
         LineList t = l->lines;
-        pc("%-14s ", l->name);
-        pc("%-8d  ", l->memloc);
+        pc("%-15s", l->name);
+        pc("%-15s", l->scope);
+        pc("%-12s", l->type);
+        pc("%-10s", l->dataType);
         while (t != NULL) {
-          pc("%4d ", t->lineno);
+          if (t->lineno != 0) {
+            pc("%3d", t->lineno);
+          }
           t = t->next;
         }
         pc("\n");
@@ -127,3 +150,44 @@ void printSymTab() {
     }
   }
 } /* printSymTab */
+
+char *getDataType(char *name) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) && (strcmp(name, l->name) != 0))
+    l = l->next;
+  if (l == NULL)
+    return NULL;
+  else
+    return l->dataType;
+}
+
+int isThereFunction(char *name) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) && (strcmp(name, l->name) != 0))
+    l = l->next;
+  if (l == NULL || strcmp(l->type, "fun") != 0)
+    return 0;
+  else
+    return 1;
+}
+
+int isThereVariableAtSameLine(char *name, int lineno, char *scope) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) &&
+         !((strcmp(name, l->name) == 0) && (strcmp(scope, l->scope) == 0)))
+    l = l->next;
+  if (l == NULL)
+    return 0;
+  else {
+    LineList t = l->lines;
+    while (t != NULL) {
+      if (t->lineno == lineno)
+        return 1;
+      t = t->next;
+    }
+    return 0;
+  }
+}

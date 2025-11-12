@@ -20,4 +20,9 @@ void buildSymtab(TreeNode *);
  */
 void typeCheck(TreeNode *);
 
+/* Function semanticError reports semantic errors */
+void semanticError(TreeNode *, char *);
+
+void mainError();
+
 #endif

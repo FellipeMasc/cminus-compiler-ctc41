@@ -16,16 +16,24 @@
  * loc = memory location is inserted only the
  * first time, otherwise ignored
  */
-void st_insert( char * name, int lineno, int loc );
+void st_insert( char * name, int lineno, char * type, char * dataType, char * scope );
 
 /* Function st_lookup returns the memory 
  * location of a variable or -1 if not found
  */
-int st_lookup ( char * name );
+int st_lookup ( char * name, char * scope );
 
 /* Procedure printSymTab prints a formatted 
  * list of the symbol table contents 
  */
 void printSymTab();
 
+/* Procedure st_just_add_lines adds a line number to the symbol table */
+void st_just_add_lines(char *name, int lineno, char *scope);
+
+char *getDataType(char *name);
+
+int isThereFunction(char *name);
+
+int isThereVariableAtSameLine(char *name, int lineno, char *scope);
 #endif

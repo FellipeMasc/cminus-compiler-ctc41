@@ -10,6 +10,7 @@
 #define _GLOBALS_H_
 
 #include "../lib/log.h"
+#include "symtab.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,7 +74,6 @@ typedef struct scopeListRec {
   char *name;
   char *type;
   int depth;
-  struct scopeListRec *init;
   struct scopeListRec *end;
   struct scopeListRec *next;
 } *scopeList;
