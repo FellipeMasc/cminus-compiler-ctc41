@@ -1,0 +1,20 @@
+/****************************************************/
+/* File: cgen.h                                     */
+/* The code generator interface to the TINY compiler*/
+/* Compiler Construction: Principles and Practice   */
+/* Kenneth C. Louden                                */
+/****************************************************/
+
+#ifndef _CGEN_H_
+#define _CGEN_H_
+
+#include "../build/parser.h"
+#include "globals.h"
+
+
+/* Procedure codeGen generates code to a code
+ * file by traversal of the syntax tree. 
+ */
+void codeGen(TreeNode * syntaxTree, FILE * code);
+
+#endif

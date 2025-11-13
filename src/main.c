@@ -15,7 +15,7 @@
 /* set NO_CODE to TRUE to get a compiler that does not
  * generate code
  */
-#define NO_CODE TRUE
+#define NO_CODE FALSE
 
 #include "util.h"
 #if NO_PARSE
@@ -42,7 +42,7 @@ int EchoSource = TRUE;
 int TraceScan = TRUE;
 int TraceParse = TRUE;
 int TraceAnalyze = TRUE;
-int TraceCode = FALSE;
+int TraceCode = TRUE;
 
 int Error = FALSE;
 
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
   //// end opening sources ////
 
   listing = stdout; /* send messages from main() to screen */
-  initializePrinter(detailpath, pgm, UP2TAB); // init logger in /lib/log.c
+  initializePrinter(detailpath, pgm, LOGALL); // init logger in /lib/log.c
   // for the lexical analysis, you might change LOGALL to LER, to generate only
   // lex and err outputs.
 
@@ -100,14 +100,15 @@ int main(int argc, char *argv[]) {
     if (TraceAnalyze)
       fprintf(listing, "\nBuilding Symbol Table...\n");
     buildSymtab(syntaxTree);
-    if (TraceAnalyze)
+    if (TraceAnalyze) {
       fprintf(listing, "\nChecking Types...\n");
-    mainError();
-    typeCheck(syntaxTree);
-    // if (TraceAnalyze)
-    //   fprintf(listing, "\nType Checking Finished\n");
+      mainError();
+      typeCheck(syntaxTree);
+      fprintf(listing, "\nType Checking Finished\n");
+    }
   }
 #if !NO_CODE
+  doneTABstartGEN();
   if (!Error) {
     char *codefile;
     int fnlen = strcspn(pgm, ".");
@@ -116,10 +117,10 @@ int main(int argc, char *argv[]) {
     strcat(codefile, ".tm");
     code = fopen(codefile, "w");
     if (code == NULL) {
-      printf("Unable to open %s\n", codefile);
+      printf("Unable to open %s\n", code);
       exit(1);
     }
-    codeGen(syntaxTree, codefile);
+    codeGen(syntaxTree, code);
     fclose(code);
   }
 #endif
