@@ -33,10 +33,10 @@ static int hash(char *key) {
 /* the list of line numbers of the source
  * code in which a variable is referenced
  */
-typedef struct LineListRec {
-  int lineno;
-  struct LineListRec *next;
-} *LineList;
+// typedef struct LineListRec {
+//   int lineno;
+//   struct LineListRec *next;
+// } *LineList;
 
 /* The record in the bucket lists for
  * each variable, including name,
@@ -44,15 +44,15 @@ typedef struct LineListRec {
  * the list of line numbers in which
  * it appears in the source code
  */
-typedef struct BucketListRec {
-  char *name;
-  char *type;
-  char *dataType;
-  char *scope;
-  LineList lines;
-  int memloc; /* memory location for variable */
-  struct BucketListRec *next;
-} *BucketList;
+// typedef struct BucketListRec {
+//   char *name;
+//   char *type;
+//   char *dataType;
+//   char *scope;
+//   LineList lines;
+//   int memloc; /* memory location for variable */
+//   struct BucketListRec *next;
+// } *BucketList;
 
 /* the hash table */
 static BucketList hashTable[SIZE];
@@ -76,8 +76,8 @@ void st_just_add_lines(char *name, int lineno, char *scope) {
  * loc = memory location is inserted only the
  * first time, otherwise ignored
  */
-void st_insert(char *name, int lineno, char *type, char *dataType,
-               char *scope) {
+void st_insert(char *name, int lineno, char *type, char *dataType, char *scope,
+               int depth) {
   int h = hash(name);
   BucketList l = hashTable[h];
   while ((l != NULL) &&
@@ -92,6 +92,7 @@ void st_insert(char *name, int lineno, char *type, char *dataType,
     l->type = type;
     l->dataType = dataType;
     l->scope = scope;
+    l->depth = depth;
     l->lines->next = NULL;
     l->next = hashTable[h];
     hashTable[h] = l;
@@ -126,9 +127,9 @@ int st_lookup(char *name, char *scope) {
  */
 void printSymTab() {
   int i;
-  pc("Variable Name  Scope          ID Type  Data Type  Line Numbers\n");
-  pc("-------------  --------       -------  ---------  "
-     "-------------------------\n");
+  pc("Variable Name  Scope          ID Type  Data Type  Line Numbers Depth\n");
+  pc("-------------  --------       -------  ---------  ------------  "
+     "---------\n");
   for (i = 0; i < SIZE; ++i) {
     if (hashTable[i] != NULL) {
       BucketList l = hashTable[i];
@@ -144,6 +145,7 @@ void printSymTab() {
           }
           t = t->next;
         }
+        pc(" | %3d", l->depth);
         pc("\n");
         l = l->next;
       }
@@ -190,4 +192,14 @@ int isThereVariableAtSameLine(char *name, int lineno, char *scope) {
     }
     return 0;
   }
+}
+
+/* Add this to symtab.c */
+BucketList st_lookup_bucket(char *name, char *scope) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) &&
+         !((strcmp(name, l->name) == 0) && (strcmp(scope, l->scope) == 0)))
+    l = l->next;
+  return l;
 }

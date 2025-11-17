@@ -12,12 +12,6 @@
 
 #define MAX_SCOPE_STACK 100
 
-// static void pushScope(char *scope, char *scopeStack[MAX_SCOPE_STACK]) {
-// scopeStack[++scopeStackTop] = scope; }
-
-// static char *popScope(char *scopeStack[MAX_SCOPE_STACK]) { return
-// scopeStack[scopeStackTop--]; }
-
 /* counter for variable memory locations */
 static int location = 0;
 
@@ -81,9 +75,30 @@ static scopeList buildScopeList(char *name, char *type, int depth) {
   return newScope;
 }
 
+static char *constructScopeName(scopeList currentScopeList) {
+  // Allocate sufficient buffer (adjust size as needed)
+  char *scopeName = (char *)malloc(256 * sizeof(char));
+  scopeName[0] = '\0'; // Initialize as empty string
+  // int currentDepth = currentScopeList->end->depth;
+  int currentDepth = 0;
+  scopeList temp = currentScopeList;
+  while (temp != NULL) {
+    if (temp->depth == currentDepth) {
+      if (currentDepth >= 2) {
+        strcat(scopeName, "-");
+      }
+      strcat(scopeName, temp->name);
+      currentDepth += 1;
+    }
+    temp = temp->next;
+  }
+  return scopeName;
+}
+
 static scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t) {
   int initialDepth = initialScopeList->end->depth;
   char *initialName = initialScopeList->end->name;
+  // char *initialName = constructScopeName(initialScopeList);
   scopeList currentScope = buildScopeList(t->attr.name, t->type, initialDepth);
 
   scopeList copyOfInitialScopeList = deepCopyScopeList(initialScopeList);
@@ -198,13 +213,14 @@ static void nullProc(TreeNode *t, scopeList currentScopeList) {
 
 static char *checkAllPossibleScopes(TreeNode *t, scopeList currentScopeList) {
   scopeList temp = currentScopeList;
+  char *possibleScope = NULL;
   while (temp != NULL) {
     if (st_lookup(t->attr.name, temp->name) != -1) {
-      return temp->name;
+      possibleScope = temp->name;
     }
     temp = temp->next;
   }
-  return NULL;
+  return possibleScope;
 }
 
 static char *returnMostSpecificScopeName(scopeList currentScopeList,
@@ -218,25 +234,6 @@ static char *returnMostSpecificScopeName(scopeList currentScopeList,
     temp = temp->next;
   }
   return mostSpecificScopeName;
-}
-
-static char *constructScopeName(scopeList currentScopeList) {
-  // Allocate sufficient buffer (adjust size as needed)
-  char *scopeName = (char *)malloc(256 * sizeof(char));
-  scopeName[0] = '\0'; // Initialize as empty string
-  int currentDepth = currentScopeList->depth;
-  scopeList temp = currentScopeList;
-  while (temp != NULL) {
-    if (temp->depth == currentDepth) {
-      if (currentDepth >= 2) {
-        strcat(scopeName, "-");
-      }
-      strcat(scopeName, temp->name);
-      currentDepth += 1;
-    }
-    temp = temp->next;
-  }
-  return scopeName;
 }
 
 /* Procedure insertNode inserts
@@ -280,7 +277,7 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
         free(message);
       } else {
         st_insert(t->attr.name, t->lineno, t->isArray ? "array" : "var",
-                  t->type, mostSpecificScopeName);
+                  t->type, mostSpecificScopeName, currentScopeList->end->depth);
       }
       break;
     }
@@ -322,7 +319,7 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
         // free(message);
       } else {
         st_insert(t->attr.name, t->lineno, t->isArray ? "array" : "var",
-                  t->type, mostSpecificScopeName);
+                  t->type, mostSpecificScopeName, currentScopeList->end->depth);
       }
       break;
     }
@@ -347,7 +344,8 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
       } else {
         char *idType = t->isArray ? "array" : "var";
         if (st_lookup(t->attr.name, scopeName) == -1)
-          st_insert(t->attr.name, t->lineno, idType, t->type, scopeName);
+          st_insert(t->attr.name, t->lineno, idType, t->type, scopeName,
+                    currentScopeList->end->depth);
         else {
           char *message = (char *)malloc(256 * sizeof(char));
           sprintf(message, "'%s' was already declared as a variable",
@@ -360,18 +358,22 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
     }
     case FunDeclK: {
       if (st_lookup(t->attr.name, scopeName) == -1)
-        st_insert(t->attr.name, t->lineno, "fun", t->typeReturn, scopeName);
+        st_insert(t->attr.name, t->lineno, "fun", t->typeReturn, scopeName,
+                  currentScopeList->end->depth);
       else
-        st_insert(t->attr.name, t->lineno, "fun", t->type, scopeName);
+        st_insert(t->attr.name, t->lineno, "fun", t->type, scopeName,
+                  currentScopeList->end->depth);
       break;
     }
     case ParamK: {
       if (st_lookup(t->attr.name, scopeName) == -1)
         st_insert(t->attr.name, t->lineno,
-                  t->isArray ? "param-array" : "param-var", t->type, scopeName);
+                  t->isArray ? "param-array" : "param-var", t->type, scopeName,
+                  currentScopeList->end->depth);
       else
         st_insert(t->attr.name, t->lineno,
-                  t->isArray ? "param-array" : "param-var", t->type, scopeName);
+                  t->isArray ? "param-array" : "param-var", t->type, scopeName,
+                  currentScopeList->end->depth);
       break;
     }
     case TypeK:
@@ -387,14 +389,15 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
  * table by preorder traversal of the syntax tree
  */
 void buildSymtab(TreeNode *syntaxTree) {
-  st_insert("input", 0, "fun", "int", "");
-  st_insert("output", 0, "fun", "void", "");
+  st_insert("input", 0, "fun", "int", "", 0);
+  st_insert("output", 0, "fun", "void", "", 0);
   scopeList initialScopeList = getInitialScopeList();
   traverse(syntaxTree, insertNode, nullProc, initialScopeList);
   if (TraceAnalyze) {
     pc("\nSymbol table:\n\n");
     printSymTab();
   }
+  free(initialScopeList);
 }
 
 static void typeError(TreeNode *t, char *message) {
@@ -526,4 +529,5 @@ static void checkNode(TreeNode *t, scopeList currentScopeList) {
 void typeCheck(TreeNode *syntaxTree) {
   scopeList initialScopeList = getInitialScopeList();
   traverse(syntaxTree, nullProc, checkNode, initialScopeList);
+  free(initialScopeList);
 }

@@ -1,10 +1,8 @@
 /****************************************************/
 /* File: cgen.c                                     */
 /* The code generator implementation                */
-/* for the TINY compiler                            */
+/* for the C-MINUS compiler                         */
 /* (generates code for the TM machine)              */
-/* Compiler Construction: Principles and Practice   */
-/* Kenneth C. Louden                                */
 /****************************************************/
 
 #include "cgen.h"
@@ -14,30 +12,87 @@
 
 /* tmpOffset is the memory offset for temps
    It is decremented each time a temp is
-   stored, and incremeted when loaded again
+   stored, and incremented when loaded again
 */
 static int tmpOffset = 0;
+
+/* frameOffset tracks local variable positions */
+static int frameOffset = 0;
+
+/* globalOffset tracks global variable positions */
+static int globalOffset = 0;
+
+/* mainEntry stores the location of main function */
+static int mainEntry = -1;
+
+static int skipLoc = -1;
 
 /* prototype for internal recursive code generator */
 static void cGen(TreeNode *tree, char *scopeName);
 
-/* Procedure genStmt generates code at a statement node */
+/* Helper function to allocate memory for variables/arrays */
+static void allocateMemory(TreeNode *tree, char *scopeName) {
+  if (tree == NULL)
+    return;
+
+  // while (tree != NULL) {
+  if (tree->nodekind == DeclK && tree->kind.decl == VarDeclK) {
+    int size = 1;
+    if (tree->isArray && tree->child[0] != NULL) {
+      size = tree->child[0]->attr.val + 1; // +1 for base address
+    }
+
+    // Store memory location in symbol table
+    BucketList l = st_lookup_bucket(tree->attr.name, scopeName);
+    if (l != NULL) {
+      l->size = size - 1; // i just want the size not the base address
+      if (strcmp(scopeName, "") == 0) {
+        // Global variable
+        l->memloc = globalOffset;
+        globalOffset -= size;
+      } else {
+        // Local variable
+        l->memloc = frameOffset;
+        frameOffset -= size;
+      }
+    }
+
+    if (tree->isArray) {
+      emitComment("-> declare vector");
+      emitRM("LDA", ac, l->memloc, gp, "guard addr of vector");
+      emitRM("ST", ac, l->memloc, gp, "store addr of vector");
+      emitComment("<- declare vector");
+    } else {
+      emitComment("-> declare var");
+      emitComment("<- declare var");
+    }
+  }
+
+  // Recurse on siblings
+  // tree = tree->sibling;
+  //}
+}
+
+/* Generate code for statement nodes */
 static void genStmt(TreeNode *tree, char *scopeName) {
   TreeNode *p1, *p2, *p3;
   int savedLoc1, savedLoc2, currentLoc;
   int loc;
+
   switch (tree->kind.stmt) {
 
   case IfK:
     if (TraceCode)
       emitComment("-> if");
-    p1 = tree->child[0];
-    p2 = tree->child[1];
-    p3 = tree->child[2];
+    p1 = tree->child[0]; // condition
+    p2 = tree->child[1]; // then part
+    p3 = tree->child[2]; // else part
+
     /* generate code for test expression */
     cGen(p1, scopeName);
     savedLoc1 = emitSkip(1);
     emitComment("if: jump to else belongs here");
+
     /* recurse on then part */
     cGen(p2, scopeName);
     savedLoc2 = emitSkip(1);
@@ -46,95 +101,145 @@ static void genStmt(TreeNode *tree, char *scopeName) {
     emitBackup(savedLoc1);
     emitRM_Abs("JEQ", ac, currentLoc, "if: jmp to else");
     emitRestore();
+
     /* recurse on else part */
     cGen(p3, scopeName);
     currentLoc = emitSkip(0);
     emitBackup(savedLoc2);
     emitRM_Abs("LDA", PC, currentLoc, "jmp to end");
     emitRestore();
+
     if (TraceCode)
       emitComment("<- if");
-    break; /* if_k */
+    break;
 
-    // case RepeatK:
-    //    if (TraceCode) emitComment("-> repeat") ;
-    //    p1 = tree->child[0] ;
-    //    p2 = tree->child[1] ;
-    //    savedLoc1 = emitSkip(0);
-    //    emitComment("repeat: jump after body comes back here");
-    //    /* generate code for body */
-    //    cGen(p1);
-    //    /* generate code for test */
-    //    cGen(p2);
-    //    emitRM_Abs("JEQ",ac,savedLoc1,"repeat: jmp back to body");
-    //    if (TraceCode)  emitComment("<- repeat") ;
-    //    break; /* repeat */
-
-  case AssignK:
+  case WhileK:
     if (TraceCode)
-      emitComment("-> assign");
-    /* generate code for rhs */
+      emitComment("-> while");
+    p1 = tree->child[0]; // condition
+    p2 = tree->child[1]; // body
+
+    savedLoc1 = emitSkip(0);
+    emitComment("repeat: jump after body comes back here");
+
+    /* generate code for test */
+    cGen(p1, scopeName);
+    savedLoc2 = emitSkip(1);
+    emitComment("while: jump to end belongs here");
+
+    /* generate code for body */
+    cGen(p2, scopeName);
+    emitRM_Abs("LDA", PC, savedLoc1, "jump to savedLoc1");
+    currentLoc = emitSkip(0);
+    emitBackup(savedLoc2);
+    emitRM_Abs("JEQ", ac, currentLoc, "repeat: jmp to end");
+    emitRestore();
+
+    if (TraceCode)
+      emitComment("<- repeat");
+    break;
+
+  case CompoundK:
+    emitComment("-> compound statement");
+
     cGen(tree->child[0], scopeName);
-    /* now store value */
-    loc = st_lookup(tree->attr.name, scopeName);
-    emitRM("ST", ac, loc, gp, "assign: store value");
-    if (TraceCode)
-      emitComment("<- assign");
-    break; /* assign_k */
+    cGen(tree->child[1], scopeName);
 
-  // case ReadK:
-  //    emitRO("IN",ac,0,0,"read integer value");
-  //    loc = st_lookup(tree->attr.name);
-  //    emitRM("ST",ac,loc,gp,"read: store value");
-  //    break;
-  // case WriteK:
-  //    /* generate code for expression to write */
-  //    cGen(tree->child[0]);
-  //    /* now output it */
-  //    emitRO("OUT",ac,0,0,"write ac");
-  //    break;
+    emitComment("<- compound statement");
+    break;
+
+  case ReturnK:
+    if (TraceCode)
+      emitComment("-> return");
+
+    /* Generate code for return expression if present */
+    if (tree->child[0] != NULL) {
+      cGen(tree->child[0], scopeName);
+    }
+
+    /* Generate return jump - load return address and jump */
+    emitRM("LD", PC, -1, mp, "return to caller");
+
+    if (TraceCode)
+      emitComment("<- return");
+    break;
+
   default:
     break;
   }
-} /* genStmt */
+}
 
-/* Procedure genExp generates code at an expression node */
+/* Generate code for expression nodes */
 static void genExp(TreeNode *tree, char *scopeName) {
   int loc;
   TreeNode *p1, *p2;
+  int memoryPointer = strcmp(scopeName, "") == 0 ? gp : 2;
+
   switch (tree->kind.exp) {
 
   case ConstK:
     if (TraceCode)
       emitComment("-> Const");
-    /* gen code to load integer constant using LDC */
     emitRM("LDC", ac, tree->attr.val, 0, "load const");
     if (TraceCode)
       emitComment("<- Const");
-    break; /* ConstK */
+    break;
 
   case IdK:
     if (TraceCode)
       emitComment("-> Id");
     loc = st_lookup(tree->attr.name, scopeName);
-    emitRM("LD", ac, loc, gp, "load id value");
+    if (loc < 0) {
+      // Try global scope
+      loc = st_lookup(tree->attr.name, "");
+    }
+    emitRM("LD", ac, loc, memoryPointer, "load id value");
     if (TraceCode)
       emitComment("<- Id");
-    break; /* IdK */
+    break;
+
+  case VarK:
+    emitComment("-> Id");
+
+    /* If array access: var[index] */
+    if (tree->child[0] != NULL) {
+
+      emitComment("-> Vector");
+      /* Generate code for index expression */
+      cGen(tree->child[0], scopeName);
+
+      /* Get base address of array */
+      loc = st_lookup(tree->attr.name, scopeName);
+
+      emitRM("LD", ac1, loc, memoryPointer, "get the address of the vector");
+      emitRM("LD", 3, 0, ac, "get the value of the index");
+      emitRO("SUB", ac, ac1, 3, "get the address");
+      emitRM("LD", ac, 0, ac, "get the value of the vector");
+      emitComment("<- Vector");
+    } else {
+      /* Simple variable */
+      loc = st_lookup(tree->attr.name, scopeName);
+      emitRM("LD", ac, loc, memoryPointer, "load id value");
+    }
+
+    emitComment("<- Id");
+    break;
 
   case OpK:
     if (TraceCode)
       emitComment("-> Op");
     p1 = tree->child[0];
     p2 = tree->child[1];
+
     /* gen code for ac = left arg */
     cGen(p1, scopeName);
     /* gen code to push left operand */
-    emitRM("ST", ac, tmpOffset--, mp, "op: push left");
+    emitRM("ST", ac, frameOffset--, memoryPointer, "op: push left");
     /* gen code for ac = right operand */
     cGen(p2, scopeName);
     /* now load left operand */
-    emitRM("LD", ac1, ++tmpOffset, mp, "op: load left");
+    emitRM("LD", ac1, ++frameOffset, memoryPointer, "op: load left");
+
     switch (tree->attr.op) {
     case PLUS:
       emitRO("ADD", ac, ac1, ac, "op +");
@@ -155,6 +260,27 @@ static void genExp(TreeNode *tree, char *scopeName) {
       emitRM("LDA", PC, 1, PC, "unconditional jmp");
       emitRM("LDC", ac, 1, ac, "true case");
       break;
+    case LTE:
+      emitRO("SUB", ac, ac1, ac, "op <=");
+      emitRM("JLE", ac, 2, PC, "br if true");
+      emitRM("LDC", ac, 0, ac, "false case");
+      emitRM("LDA", PC, 1, PC, "unconditional jmp");
+      emitRM("LDC", ac, 1, ac, "true case");
+      break;
+    case GT:
+      emitRO("SUB", ac, ac1, ac, "op >");
+      emitRM("JGT", ac, 2, PC, "br if true");
+      emitRM("LDC", ac, 0, ac, "false case");
+      emitRM("LDA", PC, 1, PC, "unconditional jmp");
+      emitRM("LDC", ac, 1, ac, "true case");
+      break;
+    case GTE:
+      emitRO("SUB", ac, ac1, ac, "op >=");
+      emitRM("JGE", ac, 2, PC, "br if true");
+      emitRM("LDC", ac, 0, ac, "false case");
+      emitRM("LDA", PC, 1, PC, "unconditional jmp");
+      emitRM("LDC", ac, 1, ac, "true case");
+      break;
     case EQ:
       emitRO("SUB", ac, ac1, ac, "op ==");
       emitRM("JEQ", ac, 2, PC, "br if true");
@@ -162,22 +288,199 @@ static void genExp(TreeNode *tree, char *scopeName) {
       emitRM("LDA", PC, 1, PC, "unconditional jmp");
       emitRM("LDC", ac, 1, ac, "true case");
       break;
+    case NEQ:
+      emitRO("SUB", ac, ac1, ac, "op !=");
+      emitRM("JNE", ac, 2, PC, "br if true");
+      emitRM("LDC", ac, 0, ac, "false case");
+      emitRM("LDA", PC, 1, PC, "unconditional jmp");
+      emitRM("LDC", ac, 1, ac, "true case");
+      break;
     default:
       emitComment("BUG: Unknown operator");
       break;
-    } /* case op */
+    }
+
     if (TraceCode)
       emitComment("<- Op");
-    break; /* OpK */
+    break;
+
+  case AssignK:
+    emitComment("-> assign");
+
+    /* Generate code for rhs */
+    cGen(tree->child[0], scopeName);
+
+    /* Check if it's an array assignment */
+    if (tree->child[1] != NULL) {
+      /* Array assignment: var[index] = value */
+      if (TraceCode)
+        emitComment("-> assign vector");
+      if (TraceCode)
+        emitComment("-> Vector");
+
+      /* Value is in ac, save it */
+      emitRM("ST", ac, tmpOffset--, memoryPointer, "save rhs value");
+
+      /* Generate code for index */
+      cGen(tree->child[1], scopeName);
+
+      /* Get base address */
+      loc = st_lookup(tree->attr.name, scopeName);
+
+      emitRM("LD", ac1, loc, memoryPointer, "get the address of the vector");
+      emitRM("LD", 3, loc, memoryPointer, "get the value of the index");
+      emitRM("LDC", 4, 1, 0, "load 1");
+      emitRO("ADD", 3, 3, 4, "sub 3 by 1");
+      emitRO("SUB", ac1, ac1, 3, "get the address");
+
+      /* Restore value and store */
+      emitRM("LD", ac, ++tmpOffset, memoryPointer, "restore rhs value");
+      emitRM("ST", ac, 0, ac1, "get the value of the vector");
+    } else {
+      /* Simple variable assignment */
+      loc = st_lookup(tree->attr.name, scopeName);
+      emitRM("ST", ac, loc, 2, "assign: store value");
+    }
+
+    emitComment("<- assign");
+    break;
+
+  case CallK:
+    if (TraceCode) {
+      char comment[100];
+      sprintf(comment, "-> call function %s", tree->attr.name);
+      emitComment(comment);
+    }
+
+    /* Handle built-in functions */
+    if (strcmp(tree->attr.name, "input") == 0) {
+      emitRO("IN", ac, 0, 0, "read integer value");
+    } else if (strcmp(tree->attr.name, "output") == 0) {
+      /* Generate code for argument */
+      if (tree->child[0] != NULL) {
+        cGen(tree->child[0], scopeName);
+      }
+      emitRO("OUT", ac, 0, 0, "write ac");
+    } else {
+      /* User-defined function call */
+      TreeNode *arg = tree->child[0];
+      int argCount = 0;
+
+      /* Push arguments onto stack */
+      while (arg != NULL) {
+        cGen(arg, scopeName);
+        emitRM("ST", ac, tmpOffset--, memoryPointer, "push argument");
+        argCount++;
+        arg = arg->sibling;
+      }
+
+      /* Save return address */
+      emitRM("LDA", ac, 1, PC, "save return address");
+      emitRM("ST", ac, tmpOffset--, memoryPointer, "push return address");
+
+      /* Jump to function */
+      int funcLoc = st_lookup(tree->attr.name, "");
+      emitRM_Abs("LDA", PC, funcLoc, "jump to function");
+
+      /* Clean up arguments */
+      tmpOffset += argCount + 1;
+    }
+
+    if (TraceCode)
+      emitComment("<- call");
+    break;
 
   default:
     break;
   }
-} /* genExp */
+}
 
-/* Procedure cGen recursively generates code by
- * tree traversal
- */
+/* Generate code for declarations */
+static void genDecl(TreeNode *tree, char *scopeName) {
+  if (tree == NULL)
+    return;
+
+  switch (tree->kind.decl) {
+
+  case FunDeclK: {
+    char comment[100];
+    sprintf(comment, "-> Init Function (%s)", tree->attr.name);
+    emitComment(comment);
+    int isMain = strcmp(tree->attr.name, "main") == 0;
+
+    if (!isMain && skipLoc == -1) {
+      skipLoc = emitSkip(1);
+    }
+    /* Store function entry point */
+    int funcEntry = emitSkip(0);
+    BucketList l = st_lookup_bucket(tree->attr.name, "");
+    if (l != NULL) {
+      l->memloc = funcEntry;
+    }
+
+    if (isMain) {
+      mainEntry = funcEntry;
+
+      if (skipLoc >= 0) {
+        emitBackup(skipLoc);
+        emitRM_Abs("LDA", PC, mainEntry, "jump to main");
+        emitRestore();
+      }
+      /* For main, emit jump to main BEFORE the function body */
+      /* This will be backpatched later in codeGen */
+    } else {
+      /* Only non-main functions need return address storage */
+      emitRM("ST", ac, -1, 2, "store return address from ac");
+    }
+
+    /* Save frame offset */
+    int savedFrameOffset = frameOffset;
+    frameOffset = -2; // Reserve space for return address and old frame pointer
+
+    /* Process parameters */
+    TreeNode *param = tree->child[0];
+    while (param != NULL) {
+      if (param->nodekind == DeclK && param->kind.decl == ParamK) {
+        char comment[100];
+        sprintf(comment, "-> Param %s", param->isArray ? "vet" : "");
+        emitComment(comment);
+        BucketList pl = st_lookup_bucket(param->attr.name, tree->attr.name);
+        if (pl != NULL) {
+          pl->memloc = frameOffset--;
+        }
+        sprintf(comment, "<- Param %s", param->isArray ? "vet" : "");
+        emitComment(comment);
+      }
+      param = param->sibling;
+    }
+
+    /* Generate code for function body */
+    cGen(tree->child[1], tree->attr.name);
+
+    /* Restore frame offset */
+    frameOffset = savedFrameOffset;
+    if (!isMain) {
+      /* Only non-main functions need return epilogue */
+      emitRM("LDA", ac1, 0, 2, "save current fp into ac1");
+      emitRM("LD", 2, 0, 2, "make fp = ofp");
+      emitRM("LD", PC, -1, ac1, "return to caller");
+    };
+    emitComment("<- End Function");
+    break;
+  }
+  case VarDeclK:
+    allocateMemory(tree, scopeName);
+    break;
+  case ParamK:
+    /* Already handled in allocateMemory */
+    break;
+
+  default:
+    break;
+  }
+}
+
+/* Recursive code generation */
 static void cGen(TreeNode *tree, char *scopeName) {
   if (tree != NULL) {
     switch (tree->nodekind) {
@@ -187,6 +490,9 @@ static void cGen(TreeNode *tree, char *scopeName) {
     case ExpK:
       genExp(tree, scopeName);
       break;
+    case DeclK:
+      genDecl(tree, scopeName);
+      break;
     default:
       break;
     }
@@ -194,25 +500,24 @@ static void cGen(TreeNode *tree, char *scopeName) {
   }
 }
 
-/**********************************************/
-/* the primary function of the code generator */
-/**********************************************/
-/* Procedure codeGen generates code to a code
- * file by traversal of the syntax tree. The
- * second parameter (codefile) is the file name
- * of the code file, and is used to print the
- * file name as a comment in the code file
- */
-void codeGen(TreeNode *syntaxTree, FILE *code) {
+/************************************************/
+/* Main code generation procedure              */
+/************************************************/
+void codeGen(TreeNode *syntaxTree, FILE *codeFile) {
   emitComment("TINY Compilation to TM Code");
-  /* generate standard prelude */
   emitComment("Standard prelude:");
   emitRM("LD", mp, 0, ac, "load maxaddress from location 0");
+  emitRM("LD", 2, 0, ac, "load maxaddress from location 0");
   emitRM("ST", ac, 0, ac, "clear location 0");
   emitComment("End of standard prelude.");
-  /* generate code for TINY program */
+
+  // emitComment("-> Init Function (main)");
+
+  /* Generate code for all declarations */
   cGen(syntaxTree, "");
-  /* finish */
+
+  /* Backpatch jump to main */
+
   emitComment("End of execution.");
   emitRO("HALT", 0, 0, 0, "");
 }
