@@ -127,16 +127,20 @@ int st_lookup(char *name, char *scope) {
  */
 void printSymTab() {
   int i;
-  pc("Variable Name  Scope          ID Type  Data Type  Line Numbers Depth\n");
-  pc("-------------  --------       -------  ---------  ------------  "
-     "---------\n");
+  pc("Variable Name  Scope     ID Type  Data Type  Line Numbers\n");
+  pc("-------------  --------  -------  ---------  "
+     "-------------------------\n");
+  // pc("Variable Name  Scope          ID Type  Data Type  Line Numbers
+  // Depth\n"); pc("-------------  --------       -------  ---------
+  // ------------  "
+  //    "---------\n");
   for (i = 0; i < SIZE; ++i) {
     if (hashTable[i] != NULL) {
       BucketList l = hashTable[i];
       while (l != NULL) {
         LineList t = l->lines;
         pc("%-15s", l->name);
-        pc("%-15s", l->scope);
+        pc("%-12s", l->scope);
         pc("%-12s", l->type);
         pc("%-10s", l->dataType);
         while (t != NULL) {
@@ -145,7 +149,7 @@ void printSymTab() {
           }
           t = t->next;
         }
-        pc(" | %3d", l->depth);
+        // pc(" | %3d", l->depth);
         pc("\n");
         l = l->next;
       }
@@ -202,4 +206,15 @@ BucketList st_lookup_bucket(char *name, char *scope) {
          !((strcmp(name, l->name) == 0) && (strcmp(scope, l->scope) == 0)))
     l = l->next;
   return l;
+}
+
+int isGlobalVariable(char *name, int depth) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) && !((strcmp(name, l->name) == 0) && (l->depth == depth)))
+    l = l->next;
+  if (l == NULL)
+    return 0;
+  else
+    return 1;
 }

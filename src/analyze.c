@@ -12,8 +12,73 @@
 
 #define MAX_SCOPE_STACK 100
 
-/* counter for variable memory locations */
-static int location = 0;
+static char **getScopePrefixes(const char *scopeName, int *count) {
+  // Split input like "A-B-C" into ["", "A", "A-B", "A-B-C"]
+  // Always start result with "" (the global scope)
+  // *count will be set to the result array length
+
+  if (!scopeName || !count)
+    return NULL;
+
+  // Upper bound: at most strlen(scopeName)+2 items ("" plus each '-' piece)
+  int len = strlen(scopeName);
+  int maxParts = len + 2;
+  char **result = (char **)malloc(maxParts * sizeof(char *));
+  int n = 0;
+
+  // Always add the global scope
+  result[n++] = strdup("");
+
+  if (len == 0) {
+    *count = n;
+    return result;
+  }
+
+  // Work through scopeName and add each prefix
+  char *buf = (char *)malloc(len + 1);
+  int buflen = 0;
+  for (int i = 0; i < len; ++i) {
+    buf[buflen++] = scopeName[i];
+    buf[buflen] = '\0';
+    if (scopeName[i] == '-') {
+      // Add up to, but not including this '-'
+      if (buflen > 1) {
+        char tmp = buf[buflen - 1];
+        buf[buflen - 1] = '\0';
+        result[n++] = strdup(buf);
+        buf[buflen - 1] = tmp;
+      }
+    }
+  }
+  // Add the full scopeName last
+  result[n++] = strdup(scopeName);
+
+  free(buf);
+  *count = n;
+  return result;
+}
+
+static void freeScopeList(scopeList scope) {
+  if (scope == NULL) {
+    return;
+  }
+
+  // Free the next nodes first (recursive)
+  if (scope->next != NULL) {
+    freeScopeList(scope->next);
+  }
+
+  // Free dynamically allocated strings (only if they were strdup'd)
+  if (scope->name != NULL && strcmp(scope->name, "") != 0) {
+    free(scope->name);
+  }
+  if (scope->type != NULL && strcmp(scope->type, "") != 0) {
+    free(scope->type);
+  }
+
+  // Free the node itself
+  free(scope);
+}
 
 static scopeList deepCopyScopeList(scopeList source) {
   if (source == NULL) {
@@ -76,10 +141,8 @@ static scopeList buildScopeList(char *name, char *type, int depth) {
 }
 
 static char *constructScopeName(scopeList currentScopeList) {
-  // Allocate sufficient buffer (adjust size as needed)
   char *scopeName = (char *)malloc(256 * sizeof(char));
-  scopeName[0] = '\0'; // Initialize as empty string
-  // int currentDepth = currentScopeList->end->depth;
+  scopeName[0] = '\0';
   int currentDepth = 0;
   scopeList temp = currentScopeList;
   while (temp != NULL) {
@@ -212,28 +275,52 @@ static void nullProc(TreeNode *t, scopeList currentScopeList) {
 }
 
 static char *checkAllPossibleScopes(TreeNode *t, scopeList currentScopeList) {
-  scopeList temp = currentScopeList;
+  int count;
+  char **scopePrefixes =
+      getScopePrefixes(constructScopeName(currentScopeList), &count);
   char *possibleScope = NULL;
-  while (temp != NULL) {
-    if (st_lookup(t->attr.name, temp->name) != -1) {
-      possibleScope = temp->name;
+  for (int i = 0; i < count; i++) {
+    if (st_lookup(t->attr.name, scopePrefixes[i]) != -1) {
+      possibleScope = scopePrefixes[i];
     }
-    temp = temp->next;
   }
-  return possibleScope;
+  // copy possibleScope to a new string
+  if (possibleScope == NULL) {
+    return NULL;
+  }
+  char *possibleScopeCopy = (char *)malloc(strlen(possibleScope) + 1);
+  strcpy(possibleScopeCopy, possibleScope);
+  for (int i = 0; i < count; i++) {
+    free(scopePrefixes[i]);
+  }
+  free(scopePrefixes);
+  return possibleScopeCopy;
 }
 
 static char *returnMostSpecificScopeName(scopeList currentScopeList,
-                                         TreeNode *t, char *lastScopeName) {
-  scopeList temp = currentScopeList;
-  char *mostSpecificScopeName = lastScopeName;
-  while (temp != NULL) {
-    if (st_lookup(t->attr.name, temp->name) != -1) {
-      mostSpecificScopeName = temp->name;
+                                         TreeNode *t) {
+  int count;
+  char **scopePrefixes =
+      getScopePrefixes(constructScopeName(currentScopeList), &count);
+  char *mostSpecificScopeName = NULL;
+  for (int i = 0; i < count; i++) {
+    if (st_lookup(t->attr.name, scopePrefixes[i]) != -1) {
+      mostSpecificScopeName = scopePrefixes[i];
     }
-    temp = temp->next;
   }
-  return mostSpecificScopeName;
+  if (mostSpecificScopeName == NULL) {
+    return NULL;
+  }
+  // copy mostSpecificScopeName to a new string
+  char *mostSpecificScopeNameCopy =
+      (char *)malloc(strlen(mostSpecificScopeName) + 1);
+  strcpy(mostSpecificScopeNameCopy, mostSpecificScopeName);
+
+  for (int i = 0; i < count; i++) {
+    free(scopePrefixes[i]);
+  }
+  free(scopePrefixes);
+  return mostSpecificScopeNameCopy;
 }
 
 /* Procedure insertNode inserts
@@ -268,7 +355,7 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
     case AssignK: {
       char *possibleScopeName = checkAllPossibleScopes(t, currentScopeList);
       char *mostSpecificScopeName =
-          returnMostSpecificScopeName(currentScopeList, t, scopeName);
+          returnMostSpecificScopeName(currentScopeList, t);
 
       if (possibleScopeName == NULL) {
         char *message = (char *)malloc(256 * sizeof(char));
@@ -284,7 +371,7 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
     case CallK: {
       char *possibleScopeName = checkAllPossibleScopes(t, currentScopeList);
       char *mostSpecificScopeName =
-          returnMostSpecificScopeName(currentScopeList, t, scopeName);
+          returnMostSpecificScopeName(currentScopeList, t);
 
       if (possibleScopeName == NULL) {
         char *message = (char *)malloc(256 * sizeof(char));
@@ -308,7 +395,7 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
     }
     case VarK: {
       char *mostSpecificScopeName =
-          returnMostSpecificScopeName(currentScopeList, t, scopeName);
+          returnMostSpecificScopeName(currentScopeList, t);
       if (isThereVariableAtSameLine(t->attr.name, t->lineno,
                                     mostSpecificScopeName)) {
         // char *message = (char *)malloc(256 * sizeof(char));
