@@ -25,6 +25,7 @@ typedef struct BucketListRec {
   int depth;
   int memloc; /* memory location for variable */
   int size; /* size of the variable if it is an array */
+  int sizeOfVars; /* size of the variables if it is a function */
   struct BucketListRec *next;
 } *BucketList;
 
@@ -33,7 +34,7 @@ typedef struct BucketListRec {
  * loc = memory location is inserted only the
  * first time, otherwise ignored
  */
-void st_insert( char * name, int lineno, char * type, char * dataType, char * scope , int depth);
+void st_insert( char * name, int lineno, char * type, char * dataType, char * scope , int depth, int memLoc);
 
 /* Function st_lookup returns the memory 
  * location of a variable or -1 if not found
@@ -56,5 +57,13 @@ int isThereVariableAtSameLine(char *name, int lineno, char *scope);
 
 /* Add this to symtab.h */
 BucketList st_lookup_bucket(char * name, char * scope);
+
+void addSizeOfVars(char *name, int sizeOfVars);
+
+int getSizeOfVars(char *name);
+
+char *getIdType(char *name);
+
+char *getIdTypeScope(char *name, char *scope);
 
 #endif

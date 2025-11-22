@@ -9,9 +9,9 @@
 #ifndef _CODE_H_
 #define _CODE_H_
 
+
 /* pc = program counter  */
 #define  PC 7
-
 /* mp = "memory pointer" points
  * to top of memory (for temp storage)
  */
@@ -28,6 +28,13 @@
 
 /* 2nd accumulator */
 #define  ac1 1
+
+#define ac2 4
+
+#define fp 2
+
+#define sp 3
+
 
 /* code emitting utilities */
 

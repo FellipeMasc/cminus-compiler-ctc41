@@ -77,7 +77,7 @@ void st_just_add_lines(char *name, int lineno, char *scope) {
  * first time, otherwise ignored
  */
 void st_insert(char *name, int lineno, char *type, char *dataType, char *scope,
-               int depth) {
+               int depth, int memLoc) {
   int h = hash(name);
   BucketList l = hashTable[h];
   while ((l != NULL) &&
@@ -93,6 +93,7 @@ void st_insert(char *name, int lineno, char *type, char *dataType, char *scope,
     l->dataType = dataType;
     l->scope = scope;
     l->depth = depth;
+    l->memloc = memLoc;
     l->lines->next = NULL;
     l->next = hashTable[h];
     hashTable[h] = l;
@@ -130,26 +131,27 @@ void printSymTab() {
   pc("Variable Name  Scope     ID Type  Data Type  Line Numbers\n");
   pc("-------------  --------  -------  ---------  "
      "-------------------------\n");
-  // pc("Variable Name  Scope          ID Type  Data Type  Line Numbers
-  // Depth\n"); pc("-------------  --------       -------  ---------
-  // ------------  "
-  //    "---------\n");
+  // pc("Variable Name  Scope     ID Type  Data Type  Memloc  SizeOfVars  Line Numbers\n");
+  // pc("-------------  --------  -------  ---------  ------  ----------  -------------------------\n");
+
   for (i = 0; i < SIZE; ++i) {
     if (hashTable[i] != NULL) {
       BucketList l = hashTable[i];
       while (l != NULL) {
         LineList t = l->lines;
-        pc("%-15s", l->name);
-        pc("%-12s", l->scope);
-        pc("%-12s", l->type);
-        pc("%-10s", l->dataType);
+        pc("%-14s ", l->name);
+        pc("%-8s  ", l->scope);
+        pc("%-7s  ", l->type);
+        pc("%-9s  ", l->dataType);
+        // pc("%-6d  ", l->memloc);
+        // pc("%-10d  ", l->sizeOfVars);
+
         while (t != NULL) {
           if (t->lineno != 0) {
-            pc("%3d", t->lineno);
+            pc("%2d ", t->lineno);
           }
           t = t->next;
         }
-        // pc(" | %3d", l->depth);
         pc("\n");
         l = l->next;
       }
@@ -166,6 +168,29 @@ char *getDataType(char *name) {
     return NULL;
   else
     return l->dataType;
+}
+
+char *getIdType(char *name) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) && (strcmp(name, l->name) != 0))
+    l = l->next;
+  if (l == NULL)
+    return NULL;
+  else
+    return l->type;
+}
+
+char *getIdTypeScope(char *name, char *scope ) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) &&
+         !((strcmp(name, l->name) == 0) && (strcmp(scope, l->scope) == 0)))
+    l = l->next;
+  if (l == NULL)
+    return NULL;
+  else
+    return l->type;
 }
 
 int isThereFunction(char *name) {
@@ -217,4 +242,26 @@ int isGlobalVariable(char *name, int depth) {
     return 0;
   else
     return 1;
+}
+
+void addSizeOfVars(char *name, int sizeOfVars) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) && (strcmp(name, l->name) != 0))
+    l = l->next;
+  if (l == NULL)
+    return;
+  else
+    l->sizeOfVars += sizeOfVars;
+}
+
+int getSizeOfVars(char *name) {
+  int h = hash(name);
+  BucketList l = hashTable[h];
+  while ((l != NULL) && (strcmp(name, l->name) != 0))
+    l = l->next;
+  if (l == NULL)
+    return 0;
+  else
+    return l->sizeOfVars;
 }

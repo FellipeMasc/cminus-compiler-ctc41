@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
     strcat(codefile, ".tm");
     code = fopen(codefile, "w");
     if (code == NULL) {
-      printf("Unable to open %s\n", code);
+      printf("Unable to open %s\n", codefile);
       exit(1);
     }
     codeGen(syntaxTree, code);
