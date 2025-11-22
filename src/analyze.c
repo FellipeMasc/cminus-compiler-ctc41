@@ -10,9 +10,11 @@
 #include "globals.h"
 #include "symtab.h"
 
-#define MAX_SCOPE_STACK 100
+static int memloc = 0;
+static int sizeOfVars = 0;
 
-static char **getScopePrefixes(const char *scopeName, int *count) {
+
+ char **getScopePrefixes(const char *scopeName, int *count) {
   // Split input like "A-B-C" into ["", "A", "A-B", "A-B-C"]
   // Always start result with "" (the global scope)
   // *count will be set to the result array length
@@ -58,7 +60,7 @@ static char **getScopePrefixes(const char *scopeName, int *count) {
   return result;
 }
 
-static void freeScopeList(scopeList scope) {
+ void freeScopeList(scopeList scope) {
   if (scope == NULL) {
     return;
   }
@@ -80,7 +82,7 @@ static void freeScopeList(scopeList scope) {
   free(scope);
 }
 
-static scopeList deepCopyScopeList(scopeList source) {
+ scopeList deepCopyScopeList(scopeList source) {
   if (source == NULL) {
     return NULL;
   }
@@ -120,7 +122,7 @@ static scopeList deepCopyScopeList(scopeList source) {
   return copy;
 }
 
-static scopeList getInitialScopeList() {
+ scopeList getInitialScopeList() {
   scopeList initialScope = (scopeList)malloc(sizeof(struct scopeListRec));
   initialScope->type = "global";
   initialScope->depth = 0;
@@ -130,7 +132,7 @@ static scopeList getInitialScopeList() {
   return initialScope;
 }
 
-static scopeList buildScopeList(char *name, char *type, int depth) {
+ scopeList buildScopeList(char *name, char *type, int depth) {
   scopeList newScope = (scopeList)malloc(sizeof(struct scopeListRec));
   newScope->name = (name != NULL) ? name : "";
   newScope->type = (type != NULL) ? type : "";
@@ -140,7 +142,7 @@ static scopeList buildScopeList(char *name, char *type, int depth) {
   return newScope;
 }
 
-static char *constructScopeName(scopeList currentScopeList) {
+ char *constructScopeName(scopeList currentScopeList) {
   char *scopeName = (char *)malloc(256 * sizeof(char));
   scopeName[0] = '\0';
   int currentDepth = 0;
@@ -158,7 +160,10 @@ static char *constructScopeName(scopeList currentScopeList) {
   return scopeName;
 }
 
-static scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t) {
+ scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t) {
+  if (initialScopeList == NULL || t == NULL) {
+    return NULL;
+  }
   int initialDepth = initialScopeList->end->depth;
   char *initialName = initialScopeList->end->name;
   // char *initialName = constructScopeName(initialScopeList);
@@ -188,16 +193,17 @@ static scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t) {
       currentScope->name = initialName;
       // currentScope->depth = initialDepth + 1;
       return copyOfInitialScopeList;
-    case CompoundK:
+    case CompoundK: {
+      char *initialScopeType = initialScopeList->end->type;
       if (initialScopeList->end->type != NULL &&
-          strcmp(initialScopeList->end->type, "block") == 0) {
+          (strcmp(initialScopeType, "block") == 0) || (strcmp(initialScopeType, "while") == 0) || (strcmp(initialScopeType, "if") == 0)) {
         scopeList temp = copyOfInitialScopeList;
         while (temp->next != NULL) {
           temp = temp->next;
         }
         temp->next = currentScope;
         copyOfInitialScopeList->end = currentScope;
-        copyOfInitialScopeList->end->name = "block";
+        copyOfInitialScopeList->end->name = initialScopeType;
         currentScope->depth = initialDepth + 1;
         return copyOfInitialScopeList;
       } else {
@@ -211,6 +217,7 @@ static scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t) {
         currentScope->depth = initialDepth;
         return copyOfInitialScopeList;
       }
+    }
     default:
       break;
     }
@@ -231,10 +238,26 @@ static scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t) {
     break;
   default:
     free(currentScope);
-    return NULL;
+    return initialScopeList;
+    break;
+}
+free(currentScope);
+return initialScopeList;
+}
+
+static void postAddSizeofVars(TreeNode *t, scopeList currentScopeList) {
+  switch (t->nodekind) {
+    case DeclK:
+    switch (t->kind.decl) {
+    case FunDeclK: {
+      addSizeOfVars(t->attr.name, sizeOfVars);
+      break;
+    }
+    default:
+      break;
+    }
     break;
   }
-  return NULL;
 }
 
 /* Procedure traverse is a generic recursive
@@ -297,7 +320,7 @@ static char *checkAllPossibleScopes(TreeNode *t, scopeList currentScopeList) {
   return possibleScopeCopy;
 }
 
-static char *returnMostSpecificScopeName(scopeList currentScopeList,
+char *returnMostSpecificScopeName(scopeList currentScopeList,
                                          TreeNode *t) {
   int count;
   char **scopePrefixes =
@@ -364,7 +387,7 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
         free(message);
       } else {
         st_insert(t->attr.name, t->lineno, t->isArray ? "array" : "var",
-                  t->type, mostSpecificScopeName, currentScopeList->end->depth);
+                  t->type, mostSpecificScopeName, currentScopeList->end->depth, 0);
       }
       break;
     }
@@ -380,16 +403,6 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
         free(message);
       } else {
         st_just_add_lines(t->attr.name, t->lineno, mostSpecificScopeName);
-        // if (t->child[0] != NULL) {
-        //   if (t->child[0]->kind.exp == ConstK) {
-        //     st_just_add_lines(t->child[0]->attr.name, t->lineno,
-        //                       mostSpecificScopeName);
-        //   }
-        //   if (t->child[0]->kind.exp == VarK) {
-        //     st_just_add_lines(t->child[0]->attr.name, t->lineno,
-        //                       mostSpecificScopeName);
-        //   }
-        // }
       }
       break;
     }
@@ -398,15 +411,9 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
           returnMostSpecificScopeName(currentScopeList, t);
       if (isThereVariableAtSameLine(t->attr.name, t->lineno,
                                     mostSpecificScopeName)) {
-        // char *message = (char *)malloc(256 * sizeof(char));
-        // sprintf(message, "'%s' was already declared at line %d",
-        // t->attr.name,
-        //         t->lineno);
-        // semanticError(t, message);
-        // free(message);
       } else {
         st_insert(t->attr.name, t->lineno, t->isArray ? "array" : "var",
-                  t->type, mostSpecificScopeName, currentScopeList->end->depth);
+                  t->type, mostSpecificScopeName, currentScopeList->end->depth, 0);
       }
       break;
     }
@@ -429,38 +436,55 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
         semanticError(t, message);
         free(message);
       } else {
-        char *idType = t->isArray ? "array" : "var";
-        if (st_lookup(t->attr.name, scopeName) == -1)
-          st_insert(t->attr.name, t->lineno, idType, t->type, scopeName,
-                    currentScopeList->end->depth);
-        else {
-          char *message = (char *)malloc(256 * sizeof(char));
-          sprintf(message, "'%s' was already declared as a variable",
-                  t->attr.name);
-          semanticError(t, message);
-          free(message);
+        if (t->isArray) {
+          if (st_lookup(t->attr.name, scopeName) == -1) {
+            st_insert(t->attr.name, t->lineno, "array", t->type, scopeName,
+                      currentScopeList->end->depth,memloc);
+          memloc+= t->child[0]->attr.val;
+          sizeOfVars+= t->child[0]->attr.val;
+            }
+          else {
+            char *message = (char *)malloc(256 * sizeof(char));
+            sprintf(message, "'%s' was already declared as a variable",
+                    t->attr.name);
+            semanticError(t, message);
+            free(message);
+          }
+        } else {
+          if (st_lookup(t->attr.name, scopeName) == -1) {
+            st_insert(t->attr.name, t->lineno, "var", t->type, scopeName,
+                      currentScopeList->end->depth,memloc);
+            memloc++;
+            sizeOfVars++;
+            }
+          else {
+            char *message = (char *)malloc(256 * sizeof(char));
+            sprintf(message, "'%s' was already declared as a variable",
+                    t->attr.name);
+            semanticError(t, message);
+            free(message);
+          }
         }
       }
       break;
     }
     case FunDeclK: {
-      if (st_lookup(t->attr.name, scopeName) == -1)
+      if (st_lookup(t->attr.name, scopeName) == -1) {
         st_insert(t->attr.name, t->lineno, "fun", t->typeReturn, scopeName,
-                  currentScopeList->end->depth);
-      else
-        st_insert(t->attr.name, t->lineno, "fun", t->type, scopeName,
-                  currentScopeList->end->depth);
+                  currentScopeList->end->depth,0);
+                  memloc = 0;
+                  sizeOfVars = 0;
+        }
       break;
     }
     case ParamK: {
-      if (st_lookup(t->attr.name, scopeName) == -1)
+      if (st_lookup(t->attr.name, scopeName) == -1) {
         st_insert(t->attr.name, t->lineno,
                   t->isArray ? "param-array" : "param-var", t->type, scopeName,
-                  currentScopeList->end->depth);
-      else
-        st_insert(t->attr.name, t->lineno,
-                  t->isArray ? "param-array" : "param-var", t->type, scopeName,
-                  currentScopeList->end->depth);
+                  currentScopeList->end->depth,memloc);
+          memloc++;
+          sizeOfVars++;
+        }
       break;
     }
     case TypeK:
@@ -476,10 +500,10 @@ static void insertNode(TreeNode *t, scopeList currentScopeList) {
  * table by preorder traversal of the syntax tree
  */
 void buildSymtab(TreeNode *syntaxTree) {
-  st_insert("input", 0, "fun", "int", "", 0);
-  st_insert("output", 0, "fun", "void", "", 0);
+  st_insert("input", 0, "fun", "int", "", 0,0);
+  st_insert("output", 0, "fun", "void", "", 0,0);
   scopeList initialScopeList = getInitialScopeList();
-  traverse(syntaxTree, insertNode, nullProc, initialScopeList);
+  traverse(syntaxTree, insertNode, postAddSizeofVars, initialScopeList);
   if (TraceAnalyze) {
     pc("\nSymbol table:\n\n");
     printSymTab();
@@ -503,6 +527,7 @@ void mainError() {
     sprintf(message, "undefined reference to 'main'");
     pce("Semantic error: %s\n", message);
     free(message);
+    Error = TRUE;
   }
 }
 
@@ -543,6 +568,7 @@ static void checkNode(TreeNode *t, scopeList currentScopeList) {
           }
           if (strcmp(dataType, returnType) != 0) {
             semanticError(t, "Must return same type as function declaration");
+            Error = TRUE;
           }
         }
       }

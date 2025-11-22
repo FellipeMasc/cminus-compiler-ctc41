@@ -10,6 +10,7 @@
 
 #include "globals.h"
 
+
 /* Function buildSymtab constructs the symbol 
  * table by preorder traversal of the syntax tree
  */
@@ -24,5 +25,23 @@ void typeCheck(TreeNode *);
 void semanticError(TreeNode *, char *);
 
 void mainError();
+
+char **getScopePrefixes(const char *scopeName, int *count);
+
+void freeScopeList(scopeList scope);
+
+scopeList deepCopyScopeList(scopeList source);
+
+scopeList getInitialScopeList();
+
+scopeList buildScopeList(char *name, char *type, int depth);
+
+char *constructScopeName(scopeList currentScopeList);
+
+char *returnMostSpecificScopeName(scopeList currentScopeList, TreeNode *t);
+
+scopeList getCurrentScopeList(scopeList initialScopeList, TreeNode *t);
+
+
 
 #endif
