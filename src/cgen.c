@@ -20,8 +20,8 @@ static int mainEntry = -1;
 
 FunctionInfosRec funcHash[MAX_FUNC_HASH];
 static int numFunctions = 0;
-static int isFirstFunction = 1;
-static int savedMainJumpLoc = 0;
+static int isFirstFunc = 1;
+static int saveMainLoc = 0;
 
 
 static char *resolveScope(TreeNode *t, char *scope) {
@@ -387,28 +387,56 @@ void genDecl(TreeNode *t,scopeList scope, char *funcName) {
       emitComment("-> FunDeclK");
     numFunctions++;
     funcHash[numFunctions - 1].funcName = t->attr.name;
-    if (isFirstFunction)
+    if (isFirstFunc)
       funcHash[numFunctions - 1].startAddr = emitSkip(0) + 1;
     else
       funcHash[numFunctions - 1].startAddr = emitSkip(0);
     funcHash[numFunctions - 1].sizeOfVars =
         getSizeOfVars(t->attr.name);
-    if (isFirstFunction) {
-      if (strcmp(t->attr.name, "main") == 0) { 
-        genMainPrologue(t);
+    if (isFirstFunc) {
+      if (strcmp(t->attr.name, "main") == 0) {
+        emitRM("ST", fp, 0, sp,
+               "Prologue: Storing frame pointer on stack pointer");
+        emitRM("LDA", fp, 0, sp,
+               "Prologue: FP pointing to current frame function");
+        emitRM("LDA", sp, -2, sp, "Prologue: Decrementing SP by 2");
+        int sizeOfVars = getSizeOfVars("main");
+        emitRM("LDA", sp, -sizeOfVars, sp,
+               "Prologue: Allocating memory for local variables");
+        /*
+        -> Ponteiro para chamador <- fp
+        -> Endereço de retorno
+        -> Argumentos
+        -> Local variables
+        -> Temp variables <- sp
+        */
       } else { 
-        savedMainJumpLoc = emitSkip(1);
-        isFirstFunction = 0;
+        saveMainLoc = emitSkip(1);
+        isFirstFunc = 0;
       }
     } else { 
 
       if (strcmp(t->attr.name,
                   "main") == 0) { 
         savedLoc = emitSkip(0);
-        emitBackup(savedMainJumpLoc);
+        emitBackup(saveMainLoc);
         emitRM_Abs("LDA", PC, savedLoc, "Unconditional relative jmp to main");
         emitRestore();
-        genMainPrologue(t);
+        emitRM("ST", fp, 0, sp,
+               "Prologue: Storing frame pointer on stack pointer");
+        emitRM("LDA", fp, 0, sp,
+               "Prologue: FP pointing to current frame function");
+        emitRM("LDA", sp, -2, sp, "Prologue: Decrementing SP by 2");
+        int sizeOfVars = getSizeOfVars("main");
+        emitRM("LDA", sp, -sizeOfVars, sp,
+               "Prologue: Allocating memory for local variables");
+        /*
+        -> Ponteiro para chamador <- fp
+        -> Endereço de retorno
+        -> Argumentos
+        -> Local variables
+        -> Temp variables <- sp
+        */
 
       } else { 
       }
@@ -422,21 +450,6 @@ void genDecl(TreeNode *t,scopeList scope, char *funcName) {
   default:
     break;
   }
-}
-
-void genMainPrologue(TreeNode *tree) {
-  emitRM("ST", fp, 0, sp, "Prologue: Storing FP on stack");
-  emitRM("LDA", fp, 0, sp, "Prologue: FP pointing to current frame function");
-  emitRM("LDA", sp, -2, sp, "Prologue: Decrementing SP by 2");
-  int sizeOfVars = getSizeOfVars("main");
-  emitRM("LDA", sp, -sizeOfVars, sp, "Prologue: Allocating memory for local variables");
-  /*
-  -> Ponteiro para chamador <- fp
-  -> Endereço de retorno
-  -> Argumentos
-  -> Local variables
-  -> Temp variables <- sp
-  */
 }
 
 void genPrologue(TreeNode *tree, scopeList scope, char *funcName) {

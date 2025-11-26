@@ -35,6 +35,5 @@ void genEpilogue(TreeNode *t, scopeList scope, char *funcName);
 void genStmt(TreeNode *t, scopeList scope, char *funcName);
 void genExp(TreeNode *t, scopeList scope, int isAddr);
 void genDecl(TreeNode *t, scopeList scope, char *funcName);
-void genMainPrologue(TreeNode *t);
 
 #endif
